@@ -12,9 +12,12 @@ A fully client-side drum machine & step sequencer with a Rust backend for sharin
 - **Swing** (0–60%) and tempo 60–200 BPM
 - Drag-paint steps, live playhead + hit flashes
 
-### Bass synth
+### Bass synth & melodic tracks
 - 303-style acid bass: sawtooth + sub-sine through a resonant lowpass
 - Per-step pitch — scroll wheel on a bass cell to change note
+- **Lead** — detuned saw pluck, scale-aware degrees per step
+- **Chords** — soft poly pad, click to place a triad, wheel to change its scale degree
+- Global **key & scale** selector (major, minor, pentatonics, dorian, phrygian, blues) — randomizer and melodic tracks stay in key
 
 ### Mixing & FX
 - Per-track **reverb send** (generated impulse response convolution) and **tempo-synced delay send** (dotted-eighth, feedback-filtered)

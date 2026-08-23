@@ -26,8 +26,6 @@ const SLOTS = ["A", "B", "C", "D"];
 const MIN_STEPS = 4;
 const MAX_STEPS = 64;
 const STORAGE_KEY = "thump-v2";
-const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-const BASS_ROOT_MIDI = 33; // A1
 
 const PERC_TRACKS = [
   { id: "kick",    name: "Kick",    note: "C2",  vol: 90, mute: false, rev: 0,  dly: 0 },
@@ -41,6 +39,35 @@ const PERC_TRACKS = [
 ];
 
 const BASS_TRACK = { id: "bass", name: "Bass", note: "A1", vol: 78, mute: false, rev: 4, dly: 0 };
+const LEAD_TRACK = { id: "lead", name: "Lead", note: "A3", vol: 62, mute: false, rev: 18, dly: 22 };
+const CHORDS_TRACK = { id: "chords", name: "Chords", note: "A2", vol: 58, mute: false, rev: 30, dly: 8 };
+
+const MELODIC_TRACKS = [BASS_TRACK, LEAD_TRACK, CHORDS_TRACK];
+
+const SCALES = {
+  major:     [0, 2, 4, 5, 7, 9, 11],
+  minor:     [0, 2, 3, 5, 7, 8, 10],
+  pentaMinor:[0, 3, 5, 7, 10],
+  pentaMajor:[0, 2, 4, 7, 9],
+  dorian:    [0, 2, 3, 5, 7, 9, 10],
+  phrygian:  [0, 1, 3, 5, 7, 8, 10],
+  blues:     [0, 3, 5, 6, 7, 10],
+};
+const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+const BASS_ROOT_MIDI = 33;  // A1
+const LEAD_BASE = 57;       // A3
+const CHORD_BASE = 45;      // A2
+
+function scaleMidi(deg) {
+  const iv = SCALES[state.scale] || SCALES.minor;
+  const n = iv.length;
+  const oct = Math.floor(deg / n);
+  const idx = ((deg % n) + n) % n;
+  return state.key + iv[idx] + 12 * oct;
+}
+function leadMidi(deg) { return LEAD_BASE + scaleMidi(deg); }
+function chordMidis(deg) { return [0, 2, 4].map((d) => CHORD_BASE + scaleMidi(deg + d)); }
 
 const PRESETS = {
   house: {
@@ -87,6 +114,8 @@ function emptyPattern(steps = state.steps) {
   const p = {};
   for (const t of PERC_TRACKS) p[t.id] = new Array(steps).fill(0); // 0 off | 1 on | 2 accent
   p.bass = Array.from({ length: steps }, () => ({ on: false, semi: 0 }));
+  p.lead = Array.from({ length: steps }, () => ({ on: false, deg: 0 }));
+  p.chords = Array.from({ length: steps }, () => ({ on: false, deg: 0 }));
   return p;
 }
 
@@ -95,6 +124,8 @@ const state = {
   bpm: 124,
   swing: 12,
   humanize: 0,
+  key: 9, // A
+  scale: "minor",
   masterVol: 0.8,
   mode: "pattern",
   steps: 16,
@@ -113,8 +144,11 @@ function resizePattern(p, steps) {
     while (row.length < steps) row.push(row.length % 4 === 0 ? row[0] ?? 0 : 0);
     p[t.id] = row.slice(0, steps);
   }
-  while (p.bass.length < steps) p.bass.push({ on: false, semi: 0 });
-  p.bass = p.bass.slice(0, steps);
+  for (const id of ["bass", "lead", "chords"]) {
+    const mk = id === "bass" ? () => ({ on: false, semi: 0 }) : () => ({ on: false, deg: 0 });
+    while (p[id].length < steps) p[id].push(mk());
+    p[id] = p[id].slice(0, steps);
+  }
 }
 
 // ---------- persistence ----------
@@ -124,6 +158,8 @@ function serialize() {
     bpm: state.bpm,
     swing: state.swing,
     humanize: state.humanize,
+    key: state.key,
+    scale: state.scale,
     steps: state.steps,
     mode: state.mode,
     activeSlot: state.activeSlot,
@@ -138,6 +174,8 @@ function deserialize(d) {
     state.bpm = d.bpm ?? state.bpm;
     state.swing = d.swing ?? state.swing;
     state.humanize = Math.max(0, Math.min(100, +d.humanize || 0));
+    state.key = ((+d.key || 0) % 12 + 12) % 12;
+    state.scale = SCALES[d.scale] ? d.scale : "minor";
     state.steps = Math.max(MIN_STEPS, Math.min(MAX_STEPS, +d.steps || 16));
     state.mode = d.mode === "song" ? "song" : "pattern";
     state.activeSlot = SLOTS.includes(d.activeSlot) ? d.activeSlot : "A";
@@ -161,6 +199,16 @@ function deserialize(d) {
         while (bass.length < fresh.bass.length) bass.push({ on: false, semi: 0 });
         state.patterns[s].bass = bass.slice(0, fresh.bass.length);
       }
+      for (const id of ["lead", "chords"]) {
+        if (Array.isArray(sp[id])) {
+          const row = sp[id].map((b) => ({
+            on: !!(b && b.on),
+            deg: Math.max(-7, Math.min(14, +(b && b.deg) || 0)),
+          }));
+          while (row.length < fresh[id].length) row.push({ on: false, deg: 0 });
+          state.patterns[s][id] = row.slice(0, fresh[id].length);
+        }
+      }
     }
     return true;
   } catch (_) {
@@ -180,7 +228,7 @@ function saveLocal() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       ...serialize(),
-      tracks: Object.fromEntries([...PERC_TRACKS, BASS_TRACK].map((t) => [t.id, { vol: t.vol, mute: t.mute, rev: t.rev, dly: t.dly }])),
+      tracks: Object.fromEntries([...PERC_TRACKS, ...MELODIC_TRACKS].map((t) => [t.id, { vol: t.vol, mute: t.mute, rev: t.rev, dly: t.dly }])),
     }));
   } catch (_) {}
 }
@@ -192,7 +240,7 @@ function restoreLocal() {
     const d = JSON.parse(raw);
     const ok = deserialize(d);
     if (ok && d.tracks) {
-      for (const t of [...PERC_TRACKS, BASS_TRACK]) {
+      for (const t of [...PERC_TRACKS, ...MELODIC_TRACKS]) {
       if (d.tracks[t.id]) {
         t.vol = d.tracks[t.id].vol ?? t.vol;
         t.mute = !!d.tracks[t.id].mute;
@@ -295,7 +343,7 @@ function createEngine(ac) {
 
   const gains = {};
   const sends = {};
-  for (const t of [...PERC_TRACKS, BASS_TRACK]) {
+  for (const t of [...PERC_TRACKS, ...MELODIC_TRACKS]) {
     const main = ac.createGain();
     main.gain.value = trackLevel(t);
     main.connect(master);
@@ -313,7 +361,7 @@ function createEngine(ac) {
 
   function updateSends(id) {
     if (!ac.currentTime && ac.currentTime !== 0) return;
-    const tr = [...PERC_TRACKS, BASS_TRACK].find((x) => x.id === id);
+    const tr = [...PERC_TRACKS, ...MELODIC_TRACKS].find((x) => x.id === id);
     sends[id].rev.gain.setTargetAtTime(tr.rev / 100, ac.currentTime, 0.02);
     sends[id].dly.gain.setTargetAtTime(tr.dly / 100, ac.currentTime, 0.02);
   }
@@ -482,8 +530,55 @@ function createEngine(ac) {
     sub.start(t); sub.stop(t + dur + 0.4);
   }
 
+  // bright plucky lead (detuned saw pair)
+  function lead(t, midi, dur, v) {
+    _vel = v;
+    const f = 440 * Math.pow(2, (midi - 69) / 12);
+    const lp = ac.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.Q.value = 4;
+    lp.frequency.setValueAtTime(Math.min(f * 10, 12000), t);
+    lp.frequency.exponentialRampToValueAtTime(Math.max(f * 2, 300), t + 0.12);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.3 * _vel, 0.001), t + 0.006);
+    g.gain.setTargetAtTime(0.0001, t + Math.max(dur * 0.8, 0.1), 0.09);
+    lp.connect(g).connect(gains.lead);
+    [-7, 7].forEach((cents) => {
+      const o = ac.createOscillator();
+      o.type = "sawtooth";
+      o.frequency.value = f;
+      o.detune.value = cents;
+      o.connect(lp);
+      o.start(t); o.stop(t + dur + 0.5);
+    });
+  }
+
+  // soft poly pad for chords
+  function chords(t, midis, dur, v) {
+    _vel = v;
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.16 * _vel, 0.001), t + 0.04);
+    g.gain.setTargetAtTime(0.0001, t + Math.max(dur * 0.85, 0.15), 0.18);
+    const lp = ac.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 2200;
+    lp.connect(g).connect(gains.chords);
+    midis.forEach((m, i) => {
+      const f = 440 * Math.pow(2, (m - 69) / 12);
+      const o1 = ac.createOscillator(); o1.type = "sawtooth"; o1.frequency.value = f; o1.detune.value = -5;
+      const o2 = ac.createOscillator(); o2.type = "triangle"; o2.frequency.value = f; o2.detune.value = 5;
+      const og = ac.createGain();
+      og.gain.value = i === 0 ? 0.5 : 0.36;
+      o1.connect(og); o2.connect(og);
+      og.connect(lp);
+      [o1, o2].forEach((o) => { o.start(t); o.stop(t + dur + 0.8); });
+    });
+  }
+
   function trigger(id, tt, value, velMul = 1) {
-    const tr = [...PERC_TRACKS, BASS_TRACK].find((x) => x.id === id);
+    const tr = [...PERC_TRACKS, ...MELODIC_TRACKS].find((x) => x.id === id);
     if (tr && tr.mute) return;
     const v = (value >= 2 ? 1.0 : 0.72) * velMul;
     switch (id) {
@@ -499,7 +594,7 @@ function createEngine(ac) {
     }
   }
 
-  return { ac, master, gains, trigger, bass, setDelayTime, updateSends };
+  return { ac, master, gains, trigger, bass, lead, chords, setDelayTime, updateSends };
 }
 
 let engine = null;
@@ -515,7 +610,7 @@ function trackLevel(t) {
 
 function updateTrackGain(id) {
   if (!engine) return;
-  const tr = [...PERC_TRACKS, BASS_TRACK].find((x) => x.id === id);
+  const tr = [...PERC_TRACKS, ...MELODIC_TRACKS].find((x) => x.id === id);
   engine.gains[id].gain.setTargetAtTime(trackLevel(tr), engine.ac.currentTime, 0.02);
 }
 
@@ -556,7 +651,7 @@ function scheduleStep(slot, step, time) {
   }
 
   const b = pat.bass[step];
-  if (b.on) {
+  if (b.on && !BASS_TRACK.mute) {
     const swingOffset = step % 2 === 1 ? (state.swing / 100) * sd : 0;
     let len = sd;
     for (let k = 1; k < state.steps; k++) {
@@ -565,6 +660,28 @@ function scheduleStep(slot, step, time) {
     const midi = BASS_ROOT_MIDI + b.semi;
     engine.bass(time + swingOffset + humT(), midi, len, (b.semi % 12 === 0 ? 1.0 : 0.8) * humV());
     scheduleVisual(slot, "bass", step, time + swingOffset);
+  }
+
+  const ld = pat.lead[step];
+  if (ld.on && !LEAD_TRACK.mute) {
+    const swingOffset = step % 2 === 1 ? (state.swing / 100) * sd : 0;
+    let len = sd;
+    for (let k = 1; k < state.steps; k++) {
+      if (pat.lead[(step + k) % state.steps].on) { len = k * sd; break; }
+    }
+    engine.lead(time + swingOffset + humT(), leadMidi(ld.deg), len, humV());
+    scheduleVisual(slot, "lead", step, time + swingOffset);
+  }
+
+  const ch = pat.chords[step];
+  if (ch.on && !CHORDS_TRACK.mute) {
+    const swingOffset = step % 2 === 1 ? (state.swing / 100) * sd : 0;
+    let len = sd;
+    for (let k = 1; k < state.steps; k++) {
+      if (pat.chords[(step + k) % state.steps].on) { len = k * sd; break; }
+    }
+    engine.chords(time + swingOffset, chordMidis(ch.deg), len, humV());
+    scheduleVisual(slot, "chords", step, time + swingOffset);
   }
 
   updatePlayhead(step, time);
@@ -651,7 +768,12 @@ function noteName(midi) {
 function buildGrid() {
   grid.innerHTML = "";
   grid.style.gridTemplateColumns = `230px repeat(${state.steps}, minmax(26px, 1fr))`;
-  const rows = [...PERC_TRACKS.map((t) => ({ ...t, kind: "perc" })), { ...BASS_TRACK, kind: "bass" }];
+  const rows = [
+    ...PERC_TRACKS.map((t) => ({ ...t, kind: "perc" })),
+    { ...BASS_TRACK, kind: "bass" },
+    { ...LEAD_TRACK, kind: "lead" },
+    { ...CHORDS_TRACK, kind: "chords" },
+  ];
 
   rows.forEach((tr) => {
     const label = document.createElement("div");
@@ -679,9 +801,9 @@ function buildGrid() {
       cell.dataset.step = s;
       cell.addEventListener("pointerdown", (e) => onCellDown(e, tr, s, cell));
       cell.addEventListener("wheel", (e) => {
-        if (tr.kind !== "bass") return;
+        if (tr.kind === "perc") return;
         e.preventDefault();
-        onBassWheel(e.deltaY, s);
+        onMelodicWheel(e, tr, s);
       }, { passive: false });
       cell.addEventListener("contextmenu", (e) => e.preventDefault());
       grid.appendChild(cell);
@@ -698,7 +820,7 @@ function buildGrid() {
   grid.addEventListener("input", (e) => {
     const vol = e.target.closest(".row-vol");
     if (vol) {
-      const tr = [...PERC_TRACKS, BASS_TRACK].find((x) => x.id === vol.dataset.track);
+      const tr = [...PERC_TRACKS, ...MELODIC_TRACKS].find((x) => x.id === vol.dataset.track);
       tr.vol = +vol.value;
       updateTrackGain(tr.id);
       saveLocal();
@@ -706,7 +828,7 @@ function buildGrid() {
     }
     const fx = e.target.closest(".row-fx");
     if (fx) {
-      const tr = [...PERC_TRACKS, BASS_TRACK].find((x) => x.id === fx.dataset.track);
+      const tr = [...PERC_TRACKS, ...MELODIC_TRACKS].find((x) => x.id === fx.dataset.track);
       tr[fx.dataset.fx] = +fx.value;
       if (engine) {
         engine.ac; // touch to ensure engine exists
@@ -719,7 +841,7 @@ function buildGrid() {
   grid.addEventListener("click", (e) => {
     const btn = e.target.closest(".mute-btn");
     if (btn) {
-      const tr = [...PERC_TRACKS, BASS_TRACK].find((x) => x.id === btn.dataset.track);
+      const tr = [...PERC_TRACKS, ...MELODIC_TRACKS].find((x) => x.id === btn.dataset.track);
       tr.mute = !tr.mute;
       btn.classList.toggle("active", tr.mute);
       btn.closest(".row-label").classList.toggle("muted", tr.mute);
@@ -748,12 +870,12 @@ function onCellDown(e, tr, s, cell) {
   ensureAudio();
   pushHistory();
 
-  if (tr.kind === "bass") {
-    if (e.shiftKey) return; // shift+wheel reserved
-    const b = curPattern().bass[s];
+  if (tr.kind === "bass" || tr.kind === "lead" || tr.kind === "chords") {
+    if (e.shiftKey) return;
+    const b = curPattern()[tr.id][s];
     b.on = !b.on;
     paintCell(cell, tr.id, s);
-    if (b.on) previewBass(s);
+    if (b.on) previewMelodic(tr.id, s);
     saveLocal();
     return;
   }
@@ -774,20 +896,31 @@ function onCellDown(e, tr, s, cell) {
   saveLocal();
 }
 
-function onBassWheel(deltaY, s) {
+function onMelodicWheel(e, tr, s) {
   ensureAudio();
   pushHistory();
-  const b = curPattern().bass[s];
-  if (!b.on) { b.on = true; }
-  b.semi = Math.max(-24, Math.min(24, b.semi + (deltaY < 0 ? 1 : -1)));
+  const b = curPattern()[tr.id][s];
+  if (!b.on) b.on = true;
+  const dir = e.deltaY < 0 ? 1 : -1;
+  if (tr.kind === "bass") {
+    b.semi = Math.max(-24, Math.min(24, b.semi + dir * (e.shiftKey ? 12 : 1)));
+  } else {
+    b.deg = Math.max(-7, Math.min(14, b.deg + dir * (e.shiftKey ? 7 : 1)));
+  }
   refreshCells();
-  previewBass(s);
+  previewMelodic(tr.id, s);
   saveLocal();
 }
 
-function previewBass(s) {
-  const b = curPattern().bass[s];
-  engine.bass(engine.ac.currentTime + 0.01, BASS_ROOT_MIDI + b.semi, 0.3, 0.9);
+function previewMelodic(trackId, s) {
+  const b = curPattern()[trackId][s];
+  if (trackId === "bass") {
+    engine.bass(engine.ac.currentTime + 0.01, BASS_ROOT_MIDI + b.semi, 0.3, 0.9);
+  } else if (trackId === "lead") {
+    engine.lead(engine.ac.currentTime + 0.01, leadMidi(b.deg), 0.3, 0.9);
+  } else {
+    engine.chords(engine.ac.currentTime + 0.01, chordMidis(b.deg), 0.5, 0.9);
+  }
 }
 
 function applyPaint(cell, trackId, step) {
@@ -800,14 +933,18 @@ function applyPaint(cell, trackId, step) {
 
 function paintCell(cell, trackId, step) {
   const pat = curPattern();
-  if (trackId === "bass") {
-    const b = pat.bass[step];
+  if (trackId === "bass" || trackId === "lead" || trackId === "chords") {
+    const b = pat[trackId][step];
+    const isRoot = trackId === "bass" ? b.semi % 12 === 0 : b.deg % 7 === 0;
     cell.classList.toggle("on", b.on);
-    cell.classList.toggle("acc", b.on && b.semi % 12 === 0);
+    cell.classList.toggle("acc", b.on && isRoot);
     let tag = cell.querySelector(".note-tag");
     if (b.on) {
       if (!tag) { tag = document.createElement("span"); tag.className = "note-tag"; cell.appendChild(tag); }
-      tag.textContent = noteName(BASS_ROOT_MIDI + b.semi);
+      tag.textContent =
+        trackId === "bass" ? noteName(BASS_ROOT_MIDI + b.semi)
+        : trackId === "lead" ? noteName(leadMidi(b.deg))
+        : noteName(chordMidis(b.deg)[0]);
     } else if (tag) tag.remove();
     return;
   }
@@ -831,7 +968,7 @@ function refreshRowLabels() {
   document.querySelectorAll(".row-label").forEach((label) => {
     const id = label.querySelector(".mute-btn")?.dataset.track;
     if (!id) return;
-    const tr = [...PERC_TRACKS, BASS_TRACK].find((x) => x.id === id);
+    const tr = [...PERC_TRACKS, ...MELODIC_TRACKS].find((x) => x.id === id);
     label.classList.toggle("muted", tr.mute);
     label.querySelector(".mute-btn").classList.toggle("active", tr.mute);
     label.querySelector(".row-vol").value = tr.vol;
@@ -845,10 +982,10 @@ function refreshRowLabels() {
 function copyRow(btn) {
   const trackId = btn.dataset.track;
   const pat = curPattern();
-  rowClipboard =
-    trackId === "bass"
-      ? { trackId: "bass", values: pat.bass.map((b) => ({ ...b })) }
-      : { trackId, values: [...pat[trackId]] };
+  const isMelodic = trackId !== "perc" && MELODIC_TRACKS.some((t) => t.id === trackId);
+  rowClipboard = isMelodic
+    ? { trackId, values: pat[trackId].map((b) => ({ ...b })), melodic: true }
+    : { trackId, values: [...pat[trackId]], melodic: false };
   Object.values(clipBtns).forEach((b) => b.classList.remove("clipboard"));
   btn.classList.add("clipboard");
   setStatus(`${trackId} row copied — right-click ⧉ on another row to paste.`);
@@ -858,21 +995,28 @@ function pasteRow(targetTrack) {
   if (!rowClipboard) return setStatus("Clipboard empty — click ⧉ on a row first.");
   pushHistory();
   const pat = curPattern();
-  const fixLen = (arr, fill) => {
+  const targetMelodic = MELODIC_TRACKS.some((t) => t.id === targetTrack);
+  const fixLen = (arr, mk) => {
     const out = arr.slice(0, state.steps);
-    while (out.length < state.steps) out.push(typeof fill === "function" ? fill() : fill);
+    while (out.length < state.steps) out.push(mk());
     return out;
   };
-  if (rowClipboard.trackId === "bass") {
-    if (targetTrack !== "bass") {
-      pat[targetTrack] = fixLen(rowClipboard.values.map((b) => (b.on ? 1 : 0)), 0);
+  const mkPerc = () => 0;
+  const mkBass = () => ({ on: false, semi: 0 });
+  const mkDeg = () => ({ on: false, deg: 0 });
+
+  if (rowClipboard.melodic) {
+    if (targetMelodic) {
+      const mk = targetTrack === "bass" ? mkBass : mkDeg;
+      pat[targetTrack] = fixLen(rowClipboard.values.map((b) => ({ ...b })), mk);
     } else {
-      pat.bass = fixLen(rowClipboard.values.map((b) => ({ ...b })), () => ({ on: false, semi: 0 }));
+      pat[targetTrack] = fixLen(rowClipboard.values.map((b) => (b.on ? 1 : 0)), mkPerc);
     }
-  } else if (targetTrack === "bass") {
-    pat.bass = fixLen(rowClipboard.values.map((v) => ({ on: !!v, semi: 0 })), () => ({ on: false, semi: 0 }));
+  } else if (targetMelodic) {
+    const mk = targetTrack === "bass" ? mkBass : mkDeg;
+    pat[targetTrack] = fixLen(rowClipboard.values.map((v) => (targetTrack === "bass" ? { on: !!v, semi: 0 } : { on: !!v, deg: 0 })), mk);
   } else {
-    pat[targetTrack] = fixLen(rowClipboard.values, 0);
+    pat[targetTrack] = fixLen(rowClipboard.values, mkPerc);
   }
   refreshCells();
   saveLocal();
@@ -926,7 +1070,7 @@ function refreshSlotsUI() {
 
 function isSlotEmpty(s) {
   const p = state.patterns[s];
-  return !PERC_TRACKS.some((t) => p[t.id].some(Boolean)) && !p.bass.some((b) => b.on);
+  return !PERC_TRACKS.some((t) => p[t.id].some(Boolean)) && !MELODIC_TRACKS.some((t) => p[t.id].some((b) => b.on));
 }
 
 function buildChain() {
@@ -1022,6 +1166,32 @@ humInput.addEventListener("input", () => {
   humVal.textContent = state.humanize;
   saveLocal();
 });
+
+// key / scale selects
+const keySel = $("keySel");
+const scaleSel = $("scaleSel");
+NOTE_NAMES.forEach((n, i) => {
+  const o = document.createElement("option");
+  o.value = i;
+  o.textContent = n;
+  keySel.appendChild(o);
+});
+Object.keys(SCALES).forEach((s) => {
+  const o = document.createElement("option");
+  o.value = s;
+  o.textContent = s.replace(/([A-Z])/g, " $1").toLowerCase().replace(/^./, (c) => c.toUpperCase());
+  scaleSel.appendChild(o);
+});
+keySel.addEventListener("change", () => {
+  state.key = +keySel.value;
+  refreshCells();
+  saveLocal();
+});
+scaleSel.addEventListener("change", () => {
+  state.scale = scaleSel.value;
+  refreshCells();
+  saveLocal();
+});
 volInput.addEventListener("input", () => {
   state.masterVol = volInput.value / 100;
   volVal.textContent = volInput.value;
@@ -1036,6 +1206,8 @@ function syncControls() {
   swingVal.textContent = state.swing + "%";
   humInput.value = state.humanize;
   humVal.textContent = state.humanize;
+  keySel.value = state.key;
+  scaleSel.value = state.scale;
   volInput.value = Math.round(state.masterVol * 100);
   volVal.textContent = Math.round(state.masterVol * 100);
   document.querySelectorAll("#modeToggle .chip").forEach((b) =>
@@ -1129,12 +1301,24 @@ function randomize() {
   }
   if (!pat.kick.some(Boolean)) pat.kick[0] = 1;
   pat.bass = pat.bass.map((b, s) => {
-    const scale = [0, 3, 5, 7, 10];
     if (Math.random() < 0.28 && s % 2 === 0) {
-      return { on: true, semi: scale[(Math.random() * scale.length) | 0] };
+      const iv = SCALES[state.scale];
+      const base = ((state.key - 9 + 12) % 12);
+      const semi = base > 6 ? base - 12 : base;
+      return { on: true, semi: semi + iv[(Math.random() * iv.length) | 0] + (Math.random() < 0.3 ? 12 : 0) };
     }
     return b;
   });
+  pat.lead = pat.lead.map((b, s) =>
+    s % 2 === 1 && Math.random() < 0.22
+      ? { on: true, deg: (Math.random() * 7) | 0 }
+      : b
+  );
+  pat.chords = pat.chords.map((b, s) =>
+    s % 8 === 0 && Math.random() < 0.7
+      ? { on: true, deg: (Math.random() * 7) | 0 }
+      : b
+  );
   refreshCells();
   refreshSlotsUI();
   saveLocal();
@@ -1229,6 +1413,22 @@ async function exportWav() {
         }
         eng.bass(time + sw + humT(), BASS_ROOT_MIDI + b.semi, len, (b.semi % 12 === 0 ? 1.0 : 0.8) * humV());
       }
+      const ld = pat.lead[s];
+      if (ld.on) {
+        let len = sd;
+        for (let k = 1; k < state.steps; k++) {
+          if (pat.lead[(s + k) % state.steps].on) { len = k * sd; break; }
+        }
+        eng.lead(time + sw + humT(), leadMidi(ld.deg), len, humV());
+      }
+      const ch = pat.chords[s];
+      if (ch.on) {
+        let len = sd;
+        for (let k = 1; k < state.steps; k++) {
+          if (pat.chords[(s + k) % state.steps].on) { len = k * sd; break; }
+        }
+        eng.chords(time + sw, chordMidis(ch.deg), len, humV());
+      }
     }
     t += state.steps * sd;
   });
@@ -1285,7 +1485,7 @@ document.getElementById("exportWavBtn").addEventListener("click", exportWav);
 document.getElementById("saveProjBtn").addEventListener("click", () => {
   const data = {
     ...serialize(),
-    tracks: Object.fromEntries([...PERC_TRACKS, BASS_TRACK].map((t) => [t.id, { vol: t.vol, mute: t.mute, rev: t.rev, dly: t.dly }])),
+    tracks: Object.fromEntries([...PERC_TRACKS, ...MELODIC_TRACKS].map((t) => [t.id, { vol: t.vol, mute: t.mute, rev: t.rev, dly: t.dly }])),
   };
   const blob = new Blob([JSON.stringify(data, null, 1)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -1309,7 +1509,7 @@ projFile.addEventListener("change", () => {
       pushHistory();
       if (!deserialize(d)) throw new Error("unrecognized project format");
       if (d.tracks) {
-        for (const t of [...PERC_TRACKS, BASS_TRACK]) {
+        for (const t of [...PERC_TRACKS, ...MELODIC_TRACKS]) {
           if (d.tracks[t.id]) {
             t.vol = d.tracks[t.id].vol ?? t.vol;
             t.mute = !!d.tracks[t.id].mute;

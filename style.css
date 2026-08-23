@@ -117,7 +117,8 @@ input[type="range"]::-moz-range-thumb {
   cursor: pointer;
 }
 
-input[type="number"] {
+input[type="number"],
+select {
   background: var(--panel-2);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -125,10 +126,12 @@ input[type="number"] {
   font: inherit;
   font-size: 13px;
   padding: 6px 8px;
-  width: 64px;
+  width: 92px;
   outline: none;
 }
-input[type="number"]:focus { border-color: var(--accent); }
+input[type="number"]:focus,
+select:focus { border-color: var(--accent); }
+select option { background: var(--panel); }
 
 .presets { display: flex; gap: 6px; margin-left: auto; }
 .chip { padding: 7px 12px; font-size: 12px; border-radius: 999px; color: var(--dim); }
@@ -155,7 +158,7 @@ input[type="number"]:focus { border-color: var(--accent); }
 .grid {
   display: grid;
   grid-template-columns: 230px repeat(16, minmax(26px, 1fr));
-  grid-template-rows: repeat(9, minmax(58px, 1fr));
+  grid-template-rows: repeat(11, minmax(58px, 1fr));
   gap: 5px;
   height: 100%;
 }
