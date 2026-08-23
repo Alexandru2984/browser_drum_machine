@@ -19,6 +19,7 @@ A fully client-side drum machine & step sequencer with a Rust backend for sharin
 ### Mixing & FX
 - Per-track **reverb send** (generated impulse response convolution) and **tempo-synced delay send** (dotted-eighth, feedback-filtered)
 - Volume, mute and FX sends per track
+- **Humanize** — random micro-timing and velocity variation so the beat breathes
 
 ### Patterns & songs
 - Pattern length: **16 or 32 steps**

@@ -14,6 +14,8 @@ const bpmInput = $("bpm");
 const bpmVal = $("bpmVal");
 const swingInput = $("swing");
 const swingVal = $("swingVal");
+const humInput = $("hum");
+const humVal = $("humVal");
 const volInput = $("vol");
 const volVal = $("volVal");
 const slotBtnsEl = $("slotBtns");
@@ -92,6 +94,7 @@ const state = {
   playing: false,
   bpm: 124,
   swing: 12,
+  humanize: 0,
   masterVol: 0.8,
   mode: "pattern",
   steps: 16,
@@ -120,6 +123,7 @@ function serialize() {
     v: 2,
     bpm: state.bpm,
     swing: state.swing,
+    humanize: state.humanize,
     steps: state.steps,
     mode: state.mode,
     activeSlot: state.activeSlot,
@@ -133,6 +137,7 @@ function deserialize(d) {
   try {
     state.bpm = d.bpm ?? state.bpm;
     state.swing = d.swing ?? state.swing;
+    state.humanize = Math.max(0, Math.min(100, +d.humanize || 0));
     state.steps = Math.max(MIN_STEPS, Math.min(MAX_STEPS, +d.steps || 16));
     state.mode = d.mode === "song" ? "song" : "pattern";
     state.activeSlot = SLOTS.includes(d.activeSlot) ? d.activeSlot : "A";
@@ -477,10 +482,10 @@ function createEngine(ac) {
     sub.start(t); sub.stop(t + dur + 0.4);
   }
 
-  function trigger(id, tt, value) {
+  function trigger(id, tt, value, velMul = 1) {
     const tr = [...PERC_TRACKS, BASS_TRACK].find((x) => x.id === id);
     if (tr && tr.mute) return;
-    const v = value >= 2 ? 1.0 : 0.72;
+    const v = (value >= 2 ? 1.0 : 0.72) * velMul;
     switch (id) {
       case "kick": return kick(tt, v);
       case "snare": return snare(tt, v);
@@ -538,11 +543,15 @@ function scheduleStep(slot, step, time) {
   const pat = state.patterns[slot];
   const sd = stepDuration();
 
+  const h = state.humanize / 100;
+  const humT = () => (Math.random() * 2 - 1) * h * 0.012;
+  const humV = () => 1 - Math.random() * h * 0.35;
+
   for (const tr of PERC_TRACKS) {
     const val = pat[tr.id][step];
     if (!val) continue;
     const swingOffset = step % 2 === 1 ? (state.swing / 100) * sd : 0;
-    engine.trigger(tr.id, time + swingOffset, val);
+    engine.trigger(tr.id, time + swingOffset + humT(), val, humV());
     scheduleVisual(slot, tr.id, step, time + swingOffset);
   }
 
@@ -554,7 +563,7 @@ function scheduleStep(slot, step, time) {
       if (pat.bass[(step + k) % state.steps].on) { len = k * sd; break; }
     }
     const midi = BASS_ROOT_MIDI + b.semi;
-    engine.bass(time + swingOffset, midi, len, b.semi % 12 === 0 ? 1.0 : 0.8);
+    engine.bass(time + swingOffset + humT(), midi, len, (b.semi % 12 === 0 ? 1.0 : 0.8) * humV());
     scheduleVisual(slot, "bass", step, time + swingOffset);
   }
 
@@ -1008,6 +1017,11 @@ swingInput.addEventListener("input", () => {
   swingVal.textContent = state.swing + "%";
   saveLocal();
 });
+humInput.addEventListener("input", () => {
+  state.humanize = +humInput.value;
+  humVal.textContent = state.humanize;
+  saveLocal();
+});
 volInput.addEventListener("input", () => {
   state.masterVol = volInput.value / 100;
   volVal.textContent = volInput.value;
@@ -1020,6 +1034,8 @@ function syncControls() {
   bpmVal.textContent = state.bpm;
   swingInput.value = state.swing;
   swingVal.textContent = state.swing + "%";
+  humInput.value = state.humanize;
+  humVal.textContent = state.humanize;
   volInput.value = Math.round(state.masterVol * 100);
   volVal.textContent = Math.round(state.masterVol * 100);
   document.querySelectorAll("#modeToggle .chip").forEach((b) =>
@@ -1138,14 +1154,17 @@ async function exportWav() {
   eng.master.gain.value = state.masterVol;
 
   let t = 0.05;
+  const h = state.humanize / 100;
   sequence.forEach((slot, seqIdx) => {
     const pat = state.patterns[slot];
     for (let s = 0; s < state.steps; s++) {
       const time = t + s * sd;
       const sw = s % 2 === 1 ? (state.swing / 100) * sd : 0;
+      const humT = () => (Math.random() * 2 - 1) * h * 0.012;
+      const humV = () => 1 - Math.random() * h * 0.35;
       for (const tr of PERC_TRACKS) {
         const v = pat[tr.id][s];
-        if (v) eng.trigger(tr.id, time + sw, v);
+        if (v) eng.trigger(tr.id, time + sw + humT(), v, humV());
       }
       const b = pat.bass[s];
       if (b.on) {
@@ -1153,7 +1172,7 @@ async function exportWav() {
         for (let k = 1; k < state.steps; k++) {
           if (pat.bass[(s + k) % state.steps].on) { len = k * sd; break; }
         }
-        eng.bass(time + sw, BASS_ROOT_MIDI + b.semi, len, 0.9);
+        eng.bass(time + sw + humT(), BASS_ROOT_MIDI + b.semi, len, (b.semi % 12 === 0 ? 1.0 : 0.8) * humV());
       }
     }
     t += state.steps * sd;
