@@ -154,8 +154,10 @@ input[type="number"]:focus { border-color: var(--accent); }
 
 .grid {
   display: grid;
-  grid-template-columns: 170px repeat(16, minmax(14px, 1fr));
+  grid-template-columns: 230px repeat(16, minmax(14px, 1fr));
+  grid-template-rows: repeat(9, minmax(34px, 1fr));
   gap: 5px;
+  height: 100%;
 }
 
 .row-label {
@@ -177,7 +179,8 @@ input[type="number"]:focus { border-color: var(--accent); }
 .row-tools {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
+  min-width: 0;
 }
 
 .mute-btn {
@@ -221,7 +224,8 @@ input[type="number"]:focus { border-color: var(--accent); }
 }
 
 .row-vol {
-  width: 100%;
+  flex: 1;
+  min-width: 24px;
   height: 3px;
 }
 .row-fx {
@@ -249,12 +253,12 @@ input[type="number"]:focus { border-color: var(--accent); }
 .row-label.muted .row-name { text-decoration: line-through; opacity: .45; }
 
 .cell {
-  aspect-ratio: 1 / 1.05;
   border-radius: 6px;
   background: var(--beat);
   border: 1px solid transparent;
   cursor: pointer;
   touch-action: none;
+  height: 100%;
   transition: background .08s, box-shadow .08s, transform .05s;
 }
 .cell:hover { background: #2c3444; }

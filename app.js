@@ -641,7 +641,7 @@ function noteName(midi) {
 
 function buildGrid() {
   grid.innerHTML = "";
-  grid.style.gridTemplateColumns = `170px repeat(${state.steps}, minmax(14px, 1fr))`;
+  grid.style.gridTemplateColumns = `230px repeat(${state.steps}, minmax(14px, 1fr))`;
   const rows = [...PERC_TRACKS.map((t) => ({ ...t, kind: "perc" })), { ...BASS_TRACK, kind: "bass" }];
 
   rows.forEach((tr) => {
