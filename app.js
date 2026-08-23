@@ -1831,6 +1831,28 @@ document.getElementById("joinBtn").addEventListener("click", () => {
 // ============================================================
 // INIT
 // ============================================================
+if ("serviceWorker" in navigator && location.protocol !== "file:") {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
+
+// global error toast
+window.addEventListener("error", (e) => toast(`Error: ${e.message}`));
+window.addEventListener("unhandledrejection", (e) => toast(`Error: ${e.reason}`));
+
+let toastTimer = null;
+function toast(msg) {
+  let el = document.getElementById("errToast");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "errToast";
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 5000);
+}
+
 buildGrid();
 buildSlotsBar();
 buildChain();
