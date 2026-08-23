@@ -1,0 +1,23 @@
+# Rust
+server/target/
+Cargo.lock
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Env & secrets
+.env
+.env.*
+
+# Logs
+*.log
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
