@@ -27,17 +27,17 @@ const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", 
 const BASS_ROOT_MIDI = 33; // A1
 
 const PERC_TRACKS = [
-  { id: "kick",    name: "Kick",    note: "C2",  vol: 90, mute: false },
-  { id: "snare",   name: "Snare",   note: "D3",  vol: 80, mute: false },
-  { id: "clap",    name: "Clap",    note: "D#3", vol: 75, mute: false },
-  { id: "hatC",    name: "Hat Cl",  note: "F#5", vol: 62, mute: false },
-  { id: "hatO",    name: "Hat Op",  note: "A#5", vol: 55, mute: false },
-  { id: "tom",     name: "Tom",     note: "G3",  vol: 70, mute: false },
-  { id: "rim",     name: "Rim",     note: "E4",  vol: 60, mute: false },
-  { id: "cowbell", name: "Cowbell", note: "C#4", vol: 50, mute: false },
+  { id: "kick",    name: "Kick",    note: "C2",  vol: 90, mute: false, rev: 0,  dly: 0 },
+  { id: "snare",   name: "Snare",   note: "D3",  vol: 80, mute: false, rev: 22, dly: 0 },
+  { id: "clap",    name: "Clap",    note: "D#3", vol: 75, mute: false, rev: 28, dly: 0 },
+  { id: "hatC",    name: "Hat Cl",  note: "F#5", vol: 62, mute: false, rev: 6,  dly: 14 },
+  { id: "hatO",    name: "Hat Op",  note: "A#5", vol: 55, mute: false, rev: 10, dly: 30 },
+  { id: "tom",     name: "Tom",     note: "G3",  vol: 70, mute: false, rev: 12, dly: 0 },
+  { id: "rim",     name: "Rim",     note: "E4",  vol: 60, mute: false, rev: 8,  dly: 10 },
+  { id: "cowbell", name: "Cowbell", note: "C#4", vol: 50, mute: false, rev: 5,  dly: 8 },
 ];
 
-const BASS_TRACK = { id: "bass", name: "Bass", note: "A1", vol: 78, mute: false };
+const BASS_TRACK = { id: "bass", name: "Bass", note: "A1", vol: 78, mute: false, rev: 4, dly: 0 };
 
 const PRESETS = {
   house: {
@@ -146,7 +146,7 @@ function saveLocal() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       ...serialize(),
-      tracks: Object.fromEntries([...PERC_TRACKS, BASS_TRACK].map((t) => [t.id, { vol: t.vol, mute: t.mute }])),
+      tracks: Object.fromEntries([...PERC_TRACKS, BASS_TRACK].map((t) => [t.id, { vol: t.vol, mute: t.mute, rev: t.rev, dly: t.dly }])),
     }));
   } catch (_) {}
 }
@@ -159,10 +159,12 @@ function restoreLocal() {
     const ok = deserialize(d);
     if (ok && d.tracks) {
       for (const t of [...PERC_TRACKS, BASS_TRACK]) {
-        if (d.tracks[t.id]) {
-          t.vol = d.tracks[t.id].vol ?? t.vol;
-          t.mute = !!d.tracks[t.id].mute;
-        }
+      if (d.tracks[t.id]) {
+        t.vol = d.tracks[t.id].vol ?? t.vol;
+        t.mute = !!d.tracks[t.id].mute;
+        t.rev = d.tracks[t.id].rev ?? t.rev;
+        t.dly = d.tracks[t.id].dly ?? t.dly;
+      }
       }
     }
     return ok;
@@ -215,12 +217,64 @@ function createEngine(ac) {
   comp.connect(ac.destination);
   master.connect(comp);
 
+  // reverb send (generated impulse response)
+  const revIn = ac.createGain();
+  const conv = ac.createConvolver();
+  const irLen = Math.floor(ac.sampleRate * 2.6);
+  const ir = ac.createBuffer(2, irLen, ac.sampleRate);
+  for (let c = 0; c < 2; c++) {
+    const ch = ir.getChannelData(c);
+    for (let i = 0; i < irLen; i++) {
+      ch[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / irLen, 2.6);
+    }
+  }
+  conv.buffer = ir;
+  revIn.connect(conv);
+  conv.connect(master);
+
+  // delay send (dotted-eighth, tempo-synced)
+  const dlyIn = ac.createGain();
+  const dly = ac.createDelay(2);
+  const fb = ac.createGain();
+  fb.gain.value = 0.38;
+  const dlyTone = ac.createBiquadFilter();
+  dlyTone.type = "lowpass";
+  dlyTone.frequency.value = 3200;
+  dlyIn.connect(dly);
+  dly.connect(dlyTone);
+  dlyTone.connect(fb);
+  fb.connect(dly);
+  dly.connect(master);
+  setDelayTime(ac.currentTime);
+
+  function setDelayTime(when) {
+    const t = 60 / state.bpm / 4 * 3;
+    dly.delayTime.setTargetAtTime(t, when, 0.05);
+  }
+
   const gains = {};
+  const sends = {};
   for (const t of [...PERC_TRACKS, BASS_TRACK]) {
-    const g = ac.createGain();
-    g.gain.value = trackLevel(t);
-    g.connect(master);
-    gains[t.id] = g;
+    const main = ac.createGain();
+    main.gain.value = trackLevel(t);
+    main.connect(master);
+    const sr = ac.createGain();
+    sr.gain.value = t.rev / 100;
+    main.connect(sr);
+    sr.connect(revIn);
+    const sd = ac.createGain();
+    sd.gain.value = t.dly / 100;
+    main.connect(sd);
+    sd.connect(dlyIn);
+    gains[t.id] = main;
+    sends[t.id] = { rev: sr, dly: sd };
+  }
+
+  function updateSends(id) {
+    if (!ac.currentTime && ac.currentTime !== 0) return;
+    const tr = [...PERC_TRACKS, BASS_TRACK].find((x) => x.id === id);
+    sends[id].rev.gain.setTargetAtTime(tr.rev / 100, ac.currentTime, 0.02);
+    sends[id].dly.gain.setTargetAtTime(tr.dly / 100, ac.currentTime, 0.02);
   }
 
   const noiseLen = ac.sampleRate * 2;
@@ -404,7 +458,7 @@ function createEngine(ac) {
     }
   }
 
-  return { ac, master, gains, trigger, bass };
+  return { ac, master, gains, trigger, bass, setDelayTime, updateSends };
 }
 
 let engine = null;
@@ -422,6 +476,11 @@ function updateTrackGain(id) {
   if (!engine) return;
   const tr = [...PERC_TRACKS, BASS_TRACK].find((x) => x.id === id);
   engine.gains[id].gain.setTargetAtTime(trackLevel(tr), engine.ac.currentTime, 0.02);
+}
+
+function updateSendsFor(id) {
+  if (!engine) return;
+  engine.updateSends(id);
 }
 
 // ============================================================
@@ -550,6 +609,8 @@ function buildGrid() {
       `<div class="row-tools">` +
       `<button class="mute-btn${tr.mute ? " active" : ""}" data-track="${tr.id}" title="Mute">M</button>` +
       `<input type="range" class="row-vol" data-track="${tr.id}" min="0" max="100" value="${tr.vol}" title="Volume" />` +
+      `<input type="range" class="row-fx" data-track="${tr.id}" data-fx="rev" min="0" max="100" value="${tr.rev}" title="Reverb send" />` +
+      `<input type="range" class="row-fx" data-track="${tr.id}" data-fx="dly" min="0" max="100" value="${tr.dly}" title="Delay send" />` +
       `<button class="copy-btn" data-track="${tr.id}" title="Click: copy row · Right-click: paste">⧉</button>` +
       `</div>`;
     grid.appendChild(label);
@@ -578,12 +639,24 @@ function buildGrid() {
   window.addEventListener("pointerup", () => (painting = false));
 
   grid.addEventListener("input", (e) => {
-    const slider = e.target.closest(".row-vol");
-    if (!slider) return;
-    const tr = [...PERC_TRACKS, BASS_TRACK].find((x) => x.id === slider.dataset.track);
-    tr.vol = +slider.value;
-    updateTrackGain(tr.id);
-    saveLocal();
+    const vol = e.target.closest(".row-vol");
+    if (vol) {
+      const tr = [...PERC_TRACKS, BASS_TRACK].find((x) => x.id === vol.dataset.track);
+      tr.vol = +vol.value;
+      updateTrackGain(tr.id);
+      saveLocal();
+      return;
+    }
+    const fx = e.target.closest(".row-fx");
+    if (fx) {
+      const tr = [...PERC_TRACKS, BASS_TRACK].find((x) => x.id === fx.dataset.track);
+      tr[fx.dataset.fx] = +fx.value;
+      if (engine) {
+        engine.ac; // touch to ensure engine exists
+        updateSendsFor(tr.id);
+      }
+      saveLocal();
+    }
   });
 
   grid.addEventListener("click", (e) => {
@@ -838,6 +911,7 @@ function highlightChain(idx) {
 bpmInput.addEventListener("input", () => {
   state.bpm = +bpmInput.value;
   bpmVal.textContent = state.bpm;
+  if (engine) engine.setDelayTime(engine.ac.currentTime);
   saveLocal();
 });
 swingInput.addEventListener("input", () => {
