@@ -815,7 +815,7 @@ function stop() {
   playBtn.classList.remove("on");
   if (engine) engine.setMacro(1, 1, 1);
   document.querySelectorAll(".cell.playhead").forEach((c) => c.classList.remove("playhead"));
-  document.querySelectorAll(".chain-chip.now").forEach((c) => c.classList.remove("now"));
+  document.querySelectorAll(".tl-block.now").forEach((c) => c.classList.remove("now"));
   document.querySelectorAll(".slot.playing").forEach((s) => s.classList.remove("playing"));
   setStatus("Stopped.");
 }
@@ -1142,34 +1142,113 @@ function isSlotEmpty(s) {
 
 function buildChain() {
   chainEl.innerHTML = "";
+  chainEl.classList.add("timeline");
   state.song.forEach((entry, i) => {
-    const chip = document.createElement("button");
-    chip.className = "chain-chip" + (hasAuto(entry) ? " has-auto" : "") + (i === autoSelIdx ? " sel" : "");
-    chip.textContent = entry.reps > 1 ? `${entry.slot}·${entry.reps}` : entry.slot;
-    chip.title = "Click: automation · Wheel: repeats · Right-click: remove";
-    chip.addEventListener("click", () => openAutoEditor(i));
-    chip.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      pushHistory();
-      state.song.splice(i, 1);
-      if (!state.song.length) state.song = [{ slot: state.activeSlot, reps: 1 }];
-      if (autoSelIdx >= state.song.length) autoSelIdx = -1;
-      buildChain();
+    const block = document.createElement("div");
+    block.className = "tl-block" + (hasAuto(entry) ? " has-auto" : "") + (i === autoSelIdx ? " sel" : "");
+    block.dataset.slot = entry.slot;
+    block.style.flexGrow = entry.reps;
+    block._entry = entry;
+    block.innerHTML =
+      `<span class="tl-label">${entry.slot}${entry.reps > 1 ? " ×" + entry.reps : ""}</span>` +
+      `<span class="tl-grip" title="Drag to change repeats"></span>`;
+    attachTimelineEvents(block, i);
+    chainEl.appendChild(block);
+  });
+  if (!state.song.length) {
+    chainEl.innerHTML = `<span class="tl-empty">+ Chain to build your song</span>`;
+  }
+}
+
+function attachTimelineEvents(block, i) {
+  let drag = null;
+
+  block.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const rect = block.getBoundingClientRect();
+    if (rect.right - e.clientX < 12) {
+      drag = { mode: "resize", startX: e.clientX, startReps: block._entry.reps, moved: false };
+    } else {
+      drag = { mode: "move", startX: e.clientX, idx: i, moved: false };
+      block.classList.add("dragging");
+    }
+    block.setPointerCapture(e.pointerId);
+  });
+
+  block.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    if (drag.mode === "resize") {
+      const newReps = Math.max(1, Math.min(16, drag.startReps + Math.round((e.clientX - drag.startX) / 34)));
+      if (newReps !== block._entry.reps) {
+        if (!drag.moved) { pushHistory(); drag.moved = true; }
+        block._entry.reps = newReps;
+        block.style.flexGrow = newReps;
+        block.querySelector(".tl-label").textContent = `${block._entry.slot}${newReps > 1 ? " ×" + newReps : ""}`;
+      }
+      return;
+    }
+    if (!drag.moved && Math.abs(e.clientX - drag.startX) > 8) drag.moved = true;
+    if (!drag.moved) return;
+    const siblings = [...chainEl.querySelectorAll(".tl-block")];
+    let target = null;
+    for (const sib of siblings) {
+      if (sib === block) continue;
+      const r = sib.getBoundingClientRect();
+      if (e.clientX > r.left && e.clientX < r.right) {
+        target = e.clientX > r.left + r.width / 2 ? sib.nextSibling : sib;
+        break;
+      }
+    }
+    if (target === block.nextSibling) target = null;
+    if (target !== null && target !== block) {
+      chainEl.insertBefore(block, target);
+    } else if (target === null && e.clientX > siblings[siblings.length - 1].getBoundingClientRect().right) {
+      chainEl.appendChild(block);
+    }
+  });
+
+  block.addEventListener("pointerup", () => {
+    if (!drag) return;
+    block.classList.remove("dragging");
+    if (drag.mode === "move" && drag.moved) {
+      // commit DOM order back into state.song
+      const order = [...chainEl.querySelectorAll(".tl-block")].map((b) => b._entry);
+      const same = order.length === state.song.length && order.every((en, j) => en === state.song[j]);
+      if (!same) {
+        state.song = order;
+        saveLocal();
+        jamBroadcast();
+      }
+    } else if (drag.mode === "resize" && drag.moved) {
       saveLocal();
       jamBroadcast();
-    });
-    chip.addEventListener("wheel", (e) => {
-      e.preventDefault();
-      pushHistory();
-      entry.reps = Math.max(1, Math.min(16, entry.reps + (e.deltaY < 0 ? 1 : -1)));
-      buildChain();
-      saveLocal();
-      jamBroadcast();
-    }, { passive: false });
-    chainEl.appendChild(chip);
+    } else if (!drag.moved) {
+      block._skipClick = true;
+      openAutoEditor(i);
+    }
+    buildChain();
+    drag = null;
+  });
+
+  block.addEventListener("click", () => {
+    if (block._skipClick) { block._skipClick = false; return; }
+    openAutoEditor(i);
+  });
+
+  block.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    pushHistory();
+    state.song.splice(i, 1);
+    if (!state.song.length) state.song = [{ slot: state.activeSlot, reps: 1 }];
+    if (autoSelIdx >= state.song.length) autoSelIdx = -1;
+    buildChain();
+    saveLocal();
+    jamBroadcast();
   });
 }
 
+function e_pointerIdSafe() { return 0; }
 // ---------- automation editor ----------
 let autoSelIdx = -1;
 const autoPop = $("autoPop");
@@ -1227,7 +1306,7 @@ $("autoBpm").addEventListener("input", (e) => {
 });
 document.addEventListener("pointerdown", (e) => {
   if (autoPop.classList.contains("hidden")) return;
-  const chip = e.target.closest(".chain-chip");
+  const chip = e.target.closest(".tl-block");
   if (!autoPop.contains(e.target) && !(chip && chip.classList.contains("sel"))) {
     autoPop.classList.add("hidden");
     autoSelIdx = -1;
@@ -1275,7 +1354,7 @@ stepsInput.addEventListener("change", () => {
 });
 
 function highlightChain(idx) {
-  document.querySelectorAll(".chain-chip").forEach((c, i) => c.classList.toggle("now", i === idx));
+  document.querySelectorAll(".tl-block").forEach((b, i) => b.classList.toggle("now", i === idx));
   const slot = state.song[idx] ? state.song[idx].slot : null;
   document.querySelectorAll(".slot").forEach((b) =>
     b.classList.toggle("playing", state.mode === "song" && b.dataset.slot === slot)

@@ -347,31 +347,61 @@ select option { background: var(--panel); }
 
 .chain { display: flex; gap: 4px; flex-wrap: wrap; max-width: 320px; }
 
-.chain-chip {
-  position: relative;
-  background: var(--accent);
-  color: #16100d;
-  font: inherit;
-  font-size: 11px;
-  font-weight: 700;
-  border: none;
-  border-radius: 999px;
-  width: 24px; height: 22px;
-  cursor: pointer;
+.timeline {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  min-height: 34px;
+  max-width: none;
+  min-width: 200px;
 }
-.chain-chip.now { box-shadow: 0 0 0 2px var(--text); }
-.chain-chip.has-auto::after {
+.tl-empty { color: var(--dim); font-size: 11px; align-self: center; }
+
+.tl-block {
+  position: relative;
+  flex-basis: 0;
+  min-width: 44px;
+  border: none;
+  border-radius: 8px;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: inherit;
+  font-weight: 700;
+  font-size: 12px;
+  color: #16100d;
+  user-select: none;
+  touch-action: none;
+  overflow: hidden;
+}
+.tl-block[data-slot="A"] { background: var(--accent); }
+.tl-block[data-slot="B"] { background: #39c7ff; }
+.tl-block[data-slot="C"] { background: #a4f24b; }
+.tl-block[data-slot="D"] { background: #ffd239; }
+.tl-block.dragging { opacity: .85; z-index: 5; cursor: grabbing; }
+.tl-block.sel { outline: 2px solid var(--text); outline-offset: -2px; }
+.tl-block.now { box-shadow: 0 0 0 2px var(--text); }
+.tl-block.has-auto::after {
   content: "";
   position: absolute;
-  bottom: 2px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 10px;
-  height: 2px;
-  border-radius: 1px;
+  top: 3px;
+  right: 12px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
   background: #16100d;
 }
-.chain-chip.sel { outline: 2px solid #3fd97f; outline-offset: -2px; }
+.tl-label { pointer-events: none; }
+.tl-grip {
+  position: absolute;
+  right: 0; top: 0; bottom: 0;
+  width: 10px;
+  cursor: ew-resize;
+  background: rgba(0, 0, 0, .18);
+  border-radius: 0 8px 8px 0;
+}
+.tl-grip:hover { background: rgba(0, 0, 0, .32); }
 
 .auto-bpm span { display: flex; align-items: center; gap: 6px; }
 .auto-bpm input[type="checkbox"] { accent-color: var(--accent); }

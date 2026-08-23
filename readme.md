@@ -27,8 +27,8 @@ A fully client-side drum machine & step sequencer with a Rust backend for sharin
 ### Patterns & songs
 - Pattern length: **16 or 32 steps**
 - 4 pattern slots (**A/B/C/D**) — left-click to edit, right-click to copy the current slot into another
-- **Song mode** — chain slots with repeat counts (`A·4`, `B·2`…) for full arrangements; scroll a chain chip to change its repeats
-- **Automation** — click a chain chip to edit per-entry filter cutoff, reverb/dly amounts and tempo override, interpolated smoothly during playback (build-ups, breakdowns)
+- **Song mode** — visual timeline: colored bar blocks per entry, drag to reorder, drag the right edge to change repeats
+- **Automation** — click a timeline block to edit per-entry filter cutoff, reverb/dly amounts and tempo override, interpolated smoothly during playback (build-ups, breakdowns)
 - Presets (House / Breaks / Techno / Hip-Hop), intelligent randomizer
 - **Fill generator** — rolls and fills into the last N steps, with density and track selection
 - Undo/redo (`Ctrl+Z` / `Ctrl+Y`, 80 steps deep)
