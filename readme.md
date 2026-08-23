@@ -16,18 +16,24 @@ A fully client-side drum machine & step sequencer with a Rust backend for sharin
 - 303-style acid bass: sawtooth + sub-sine through a resonant lowpass
 - Per-step pitch — scroll wheel on a bass cell to change note
 
+### Mixing & FX
+- Per-track **reverb send** (generated impulse response convolution) and **tempo-synced delay send** (dotted-eighth, feedback-filtered)
+- Volume, mute and FX sends per track
+
 ### Patterns & songs
+- Pattern length: **16 or 32 steps**
 - 4 pattern slots (**A/B/C/D**) — left-click to edit, right-click to copy the current slot into another
-- **Song mode** — chain slots into a sequence and play it back in order
+- **Song mode** — chain slots with repeat counts (`A·4`, `B·2`…) for full arrangements; scroll a chain chip to change its repeats
 - Presets (House / Breaks / Techno / Hip-Hop), intelligent randomizer
 - Undo/redo (`Ctrl+Z` / `Ctrl+Y`, 80 steps deep)
 - Row copy/paste — click `⧉` to copy a row, right-click another row's `⧉` to paste
+- Project save/load as `.json` file
 
 ### Sharing & collaboration
 - **Share** any project via a short link (stored server-side)
 - Public **gallery** with likes
 - **Jam rooms** — join a room and your pattern edits sync live to everyone else over WebSockets
-- **Export WAV** — offline render of the current pattern (2 loops) or the full song
+- **Export WAV** — offline render of the current pattern (2 loops) or the full arrangement
 
 Everything is saved automatically to `localStorage`.
 
@@ -93,9 +99,10 @@ server/
 
 ## Keyboard shortcuts
 
-| Key             | Action                  |
-|-----------------|-------------------------|
-| `space`         | Play / stop             |
-| `shift+click`   | Accent a step           |
-| `wheel`         | Change bass pitch       |
-| `ctrl+z` / `ctrl+y` | Undo / redo         |
+| Key             | Action                        |
+|-----------------|-------------------------------|
+| `space`         | Play / stop                   |
+| `shift+click`   | Accent a step                 |
+| `wheel`         | Change bass pitch             |
+| `wheel` (chain) | Change entry repeats          |
+| `ctrl+z` / `ctrl+y` | Undo / redo               |

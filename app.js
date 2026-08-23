@@ -813,6 +813,20 @@ function refreshCells() {
   document.querySelectorAll(".cell").forEach((cell) => paintCell(cell, cell.dataset.track, +cell.dataset.step));
 }
 
+function refreshRowLabels() {
+  document.querySelectorAll(".row-label").forEach((label) => {
+    const id = label.querySelector(".mute-btn")?.dataset.track;
+    if (!id) return;
+    const tr = [...PERC_TRACKS, BASS_TRACK].find((x) => x.id === id);
+    label.classList.toggle("muted", tr.mute);
+    label.querySelector(".mute-btn").classList.toggle("active", tr.mute);
+    label.querySelector(".row-vol").value = tr.vol;
+    const [rev, dly] = label.querySelectorAll(".row-fx");
+    rev.value = tr.rev;
+    dly.value = tr.dly;
+  });
+}
+
 // row copy/paste
 function copyRow(btn) {
   const trackId = btn.dataset.track;
@@ -1186,7 +1200,60 @@ function audioBufferToWav(buf) {
   return new Blob([ab], { type: "audio/wav" });
 }
 
-document.getElementById("exportBtn").addEventListener("click", exportWav);
+document.getElementById("exportWavBtn").addEventListener("click", exportWav);
+
+// ---------- project save/load (JSON file) ----------
+document.getElementById("saveProjBtn").addEventListener("click", () => {
+  const data = {
+    ...serialize(),
+    tracks: Object.fromEntries([...PERC_TRACKS, BASS_TRACK].map((t) => [t.id, { vol: t.vol, mute: t.mute, rev: t.rev, dly: t.dly }])),
+  };
+  const blob = new Blob([JSON.stringify(data, null, 1)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `thump-project-${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  setStatus("Project saved to file.");
+});
+
+const projFile = document.getElementById("projFile");
+document.getElementById("loadProjBtn").addEventListener("click", () => projFile.click());
+projFile.addEventListener("change", () => {
+  const file = projFile.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const d = JSON.parse(reader.result);
+      pushHistory();
+      if (!deserialize(d)) throw new Error("unrecognized project format");
+      if (d.tracks) {
+        for (const t of [...PERC_TRACKS, BASS_TRACK]) {
+          if (d.tracks[t.id]) {
+            t.vol = d.tracks[t.id].vol ?? t.vol;
+            t.mute = !!d.tracks[t.id].mute;
+            t.rev = d.tracks[t.id].rev ?? t.rev;
+            t.dly = d.tracks[t.id].dly ?? t.dly;
+          }
+        }
+      }
+      buildGrid();
+      refreshCells();
+      refreshRowLabels();
+      refreshSlotsUI();
+      buildChain();
+      syncControls();
+      saveLocal();
+      setStatus(`Project "${file.name}" loaded.`);
+    } catch (err) {
+      setStatus(`Load failed: ${err.message}`);
+    }
+    projFile.value = "";
+  };
+  reader.readAsText(file);
+});
 
 // ============================================================
 // SHARE / GALLERY
