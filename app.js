@@ -21,7 +21,8 @@ const chainEl = $("chain");
 
 // ---------- data ----------
 const SLOTS = ["A", "B", "C", "D"];
-const STEP_OPTIONS = [16, 32];
+const MIN_STEPS = 4;
+const MAX_STEPS = 64;
 const STORAGE_KEY = "thump-v2";
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 const BASS_ROOT_MIDI = 33; // A1
@@ -132,7 +133,7 @@ function deserialize(d) {
   try {
     state.bpm = d.bpm ?? state.bpm;
     state.swing = d.swing ?? state.swing;
-    state.steps = STEP_OPTIONS.includes(d.steps) ? d.steps : 16;
+    state.steps = Math.max(MIN_STEPS, Math.min(MAX_STEPS, +d.steps || 16));
     state.mode = d.mode === "song" ? "song" : "pattern";
     state.activeSlot = SLOTS.includes(d.activeSlot) ? d.activeSlot : "A";
     state.song = Array.isArray(d.song) && d.song.length ? normalizeSong(d.song) : [{ slot: state.activeSlot, reps: 1 }];
@@ -640,7 +641,7 @@ function noteName(midi) {
 
 function buildGrid() {
   grid.innerHTML = "";
-  grid.style.gridTemplateColumns = `170px repeat(${state.steps}, 1fr)`;
+  grid.style.gridTemplateColumns = `170px repeat(${state.steps}, minmax(14px, 1fr))`;
   const rows = [...PERC_TRACKS.map((t) => ({ ...t, kind: "perc" })), { ...BASS_TRACK, kind: "bass" }];
 
   rows.forEach((tr) => {
@@ -968,13 +969,14 @@ $("modeToggle").addEventListener("click", (e) => {
   setStatus(state.mode === "song" ? "Song mode — chain plays in order." : "Pattern mode.");
 });
 
-document.getElementById("stepsToggle").addEventListener("click", (e) => {
-  const btn = e.target.closest("[data-steps]");
-  if (!btn || +btn.dataset.steps === state.steps) return;
+const stepsInput = document.getElementById("stepsInput");
+stepsInput.addEventListener("change", () => {
+  const n = Math.max(MIN_STEPS, Math.min(MAX_STEPS, Math.round(+stepsInput.value || 16)));
+  stepsInput.value = n;
+  if (n === state.steps) return;
   pushHistory();
-  state.steps = +btn.dataset.steps;
+  state.steps = n;
   for (const s of SLOTS) resizePattern(state.patterns[s], state.steps);
-  document.querySelectorAll("#stepsToggle .chip").forEach((b) => b.classList.toggle("active", b === btn));
   buildGrid();
   saveLocal();
   setStatus(`${state.steps} steps per pattern.`);
@@ -1019,9 +1021,8 @@ function syncControls() {
   document.querySelectorAll("#modeToggle .chip").forEach((b) =>
     b.classList.toggle("active", b.dataset.mode === state.mode)
   );
-  document.querySelectorAll("#stepsToggle .chip").forEach((b) =>
-    b.classList.toggle("active", +b.dataset.steps === state.steps)
-  );
+  stepsInput.value = state.steps;
+  document.getElementById("stepsVal").textContent = state.steps;
 }
 
 playBtn.addEventListener("click", () => (state.playing ? stop() : start()));
