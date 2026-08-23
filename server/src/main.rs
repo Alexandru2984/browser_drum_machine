@@ -51,16 +51,12 @@ CREATE TABLE IF NOT EXISTS patterns (
 "#;
 
 async fn db_pool() -> Pool {
+    let conn_str =
+        std::env::var("DATABASE_URL").unwrap_or_else(|_| "host=localhost user=thump password=thump dbname=thump".into());
     let mgr_config = ManagerConfig {
         recycling_method: RecyclingMethod::Fast,
     };
-    let mgr = Manager::from_config(
-        "host=localhost user=thump password=thump dbname=thump"
-            .parse()
-            .unwrap(),
-        tokio_postgres::NoTls,
-        mgr_config,
-    );
+    let mgr = Manager::from_config(conn_str.parse().unwrap(), tokio_postgres::NoTls, mgr_config);
     Pool::builder(mgr).max_size(8).build().unwrap()
 }
 

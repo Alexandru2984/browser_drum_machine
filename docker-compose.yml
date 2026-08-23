@@ -1,0 +1,27 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: thump
+      POSTGRES_PASSWORD: thump
+      POSTGRES_DB: thump
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U thump"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: host=db user=thump password=thump dbname=thump
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
