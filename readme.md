@@ -52,20 +52,17 @@ Everything is saved automatically to `localStorage`.
 | Database | PostgreSQL                                  |
 | Realtime | WebSockets (broadcast rooms)                |
 
-## Getting started
-
-### Prerequisites
-- Rust (cargo) — https://rustup.rs
-- PostgreSQL running locally
-
-### Database setup
+## Development & testing
 
 ```sh
-sudo -u postgres psql -c "CREATE USER thump WITH PASSWORD 'thump';"
-sudo -u postgres psql -c "CREATE DATABASE thump OWNER thump;"
+npm run check      # syntax check (core.js + app.js)
+npm test           # unit tests for core logic (node:test, zero deps)
+npm run test:ui    # jsdom smoke test: full UI interaction + play/stop cycle
 ```
 
-The table schema is created automatically by the server on first start.
+Pure logic lives in `core.js` (shared browser + node via UMD): scales, song
+normalization, automation sanitization, pattern resizing, WAV encoding.
+`app.js` is the UI/audio layer on top of it.
 
 ### Run
 
@@ -87,11 +84,31 @@ python3 -m http.server 8000   # sharing/gallery/jam won't work
 ```
 index.html      UI markup
 style.css       styling
+core.js         pure logic (scales, serialization, WAV encoder) — unit tested
 app.js          sequencer, synth engine, export, API/WS client
+tests/
+  core.test.js  unit tests (node:test)
+  smoke.js      jsdom UI smoke test
 server/
   Cargo.toml
   src/main.rs   Axum server: REST API, WebSocket hub, static files
 ```
+
+## Getting started
+
+### Prerequisites
+- Node.js 22+ (for tests)
+- Rust (cargo) — https://rustup.rs
+- PostgreSQL running locally
+
+### Database setup
+
+```sh
+sudo -u postgres psql -c "CREATE USER thump WITH PASSWORD 'thump';"
+sudo -u postgres psql -c "CREATE DATABASE thump OWNER thump;"
+```
+
+The table schema is created automatically by the server on first start.
 
 ## API reference
 

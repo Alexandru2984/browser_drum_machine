@@ -22,9 +22,13 @@ const slotBtnsEl = $("slotBtns");
 const chainEl = $("chain");
 
 // ---------- data ----------
-const SLOTS = ["A", "B", "C", "D"];
-const MIN_STEPS = 4;
-const MAX_STEPS = 64;
+const CORE = window.THUMP_CORE;
+const SLOTS = CORE.SLOTS;
+const MIN_STEPS = CORE.MIN_STEPS;
+const MAX_STEPS = CORE.MAX_STEPS;
+const NOTE_NAMES = CORE.NOTE_NAMES;
+const SCALES = CORE.SCALES;
+const BASS_ROOT_MIDI = CORE.BASS_ROOT_MIDI;
 const STORAGE_KEY = "thump-v2";
 
 const PERC_TRACKS = [
@@ -44,30 +48,9 @@ const CHORDS_TRACK = { id: "chords", name: "Chords", note: "A2", vol: 58, mute: 
 
 const MELODIC_TRACKS = [BASS_TRACK, LEAD_TRACK, CHORDS_TRACK];
 
-const SCALES = {
-  major:     [0, 2, 4, 5, 7, 9, 11],
-  minor:     [0, 2, 3, 5, 7, 8, 10],
-  pentaMinor:[0, 3, 5, 7, 10],
-  pentaMajor:[0, 2, 4, 7, 9],
-  dorian:    [0, 2, 3, 5, 7, 9, 10],
-  phrygian:  [0, 1, 3, 5, 7, 8, 10],
-  blues:     [0, 3, 5, 6, 7, 10],
-};
-const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-
-const BASS_ROOT_MIDI = 33;  // A1
-const LEAD_BASE = 57;       // A3
-const CHORD_BASE = 45;      // A2
-
-function scaleMidi(deg) {
-  const iv = SCALES[state.scale] || SCALES.minor;
-  const n = iv.length;
-  const oct = Math.floor(deg / n);
-  const idx = ((deg % n) + n) % n;
-  return state.key + iv[idx] + 12 * oct;
-}
-function leadMidi(deg) { return LEAD_BASE + scaleMidi(deg); }
-function chordMidis(deg) { return [0, 2, 4].map((d) => CHORD_BASE + scaleMidi(deg + d)); }
+const scaleMidi = (deg) => CORE.scaleMidi(deg, state.key, state.scale);
+const leadMidi = (deg) => CORE.leadMidi(deg, state.key, state.scale);
+const chordMidis = (deg) => CORE.chordMidis(deg, state.key, state.scale);
 
 const PRESETS = {
   house: {
@@ -111,12 +94,9 @@ const PRESETS = {
 
 // ---------- state ----------
 function emptyPattern(steps = state.steps) {
-  const p = {};
-  for (const t of PERC_TRACKS) p[t.id] = new Array(steps).fill(0); // 0 off | 1 on | 2 accent
-  p.bass = Array.from({ length: steps }, () => ({ on: false, semi: 0 }));
-  p.lead = Array.from({ length: steps }, () => ({ on: false, deg: 0 }));
-  p.chords = Array.from({ length: steps }, () => ({ on: false, deg: 0 }));
-  return p;
+  return { ...CORE.emptyPattern(steps),
+    ...Object.fromEntries(PERC_TRACKS.map((t) => [t.id, new Array(steps).fill(0)])) // 0 off | 1 on | 2 accent
+  };
 }
 
 const state = {
@@ -144,11 +124,7 @@ function resizePattern(p, steps) {
     while (row.length < steps) row.push(row.length % 4 === 0 ? row[0] ?? 0 : 0);
     p[t.id] = row.slice(0, steps);
   }
-  for (const id of ["bass", "lead", "chords"]) {
-    const mk = id === "bass" ? () => ({ on: false, semi: 0 }) : () => ({ on: false, deg: 0 });
-    while (p[id].length < steps) p[id].push(mk());
-    p[id] = p[id].slice(0, steps);
-  }
+  CORE.resizePattern(p, steps);
 }
 
 // ---------- persistence ----------
@@ -216,14 +192,6 @@ function deserialize(d) {
   }
 }
 
-function normalizeSong(song) {
-  // accepts ["A","B"] or [{slot:"A",reps:2}] → [{slot,reps}]
-  return song
-    .map((e) => (typeof e === "string" ? { slot: e, reps: 1 } : { slot: SLOTS.includes(e.slot) ? e.slot : "A", reps: Math.max(1, Math.min(16, +e.reps || 1)) }))
-    .filter((e) => SLOTS.includes(e.slot))
-    .slice(0, 64);
-}
-
 function saveLocal() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
@@ -254,42 +222,11 @@ function restoreLocal() {
     return false;
   }
 }
-function normalizeSong(song) {
-  // accepts ["A","B"] or [{slot:"A",reps:2,auto:{...}}] → normalized entries
-  return song
-    .map((e) => {
-      if (typeof e === "string") return { slot: e, reps: 1, auto: undefined };
-      return {
-        slot: SLOTS.includes(e.slot) ? e.slot : "A",
-        reps: Math.max(1, Math.min(16, +e.reps || 1)),
-        auto: e.auto && typeof e.auto === "object" ? sanitizeAuto(e.auto) : undefined,
-      };
-    })
-    .filter((e) => SLOTS.includes(e.slot))
-    .slice(0, 64);
-}
-
-const AUTO_DEFAULTS = { cutoff: 1, rev: 1, dly: 1, bpm: 0 }; // bpm 0 = no override
-
-function sanitizeAuto(a) {
-  const clamp = (v, lo, hi, def) => (Number.isFinite(+v) ? Math.max(lo, Math.min(hi, +v)) : def);
-  return {
-    cutoff: clamp(a.cutoff, 0.05, 1, 1),
-    rev: clamp(a.rev, 0, 2, 1),
-    dly: clamp(a.dly, 0, 2, 1),
-    bpm: +a.bpm > 0 ? clamp(a.bpm, 60, 200, 0) : 0,
-  };
-}
-
-function getAuto(entry) {
-  return { ...AUTO_DEFAULTS, ...(entry && entry.auto ? entry.auto : {}) };
-}
-
-function hasAuto(entry) {
-  if (!entry || !entry.auto) return false;
-  const a = entry.auto;
-  return a.cutoff !== 1 || a.rev !== 1 || a.dly !== 1 || (a.bpm || 0) > 0;
-}
+const normalizeSong = CORE.normalizeSong;
+const sanitizeAuto = CORE.sanitizeAuto;
+const getAuto = CORE.getAuto;
+const hasAuto = CORE.hasAuto;
+const AUTO_DEFAULTS = CORE.AUTO_DEFAULTS;
 
 // ---------- history (undo/redo) ----------
 const hist = { undo: [], redo: [] };
@@ -828,9 +765,7 @@ let paintValue = 1;
 let rowClipboard = null; // {trackId, values}
 const clipBtns = {};
 
-function noteName(midi) {
-  return NOTE_NAMES[((midi % 12) + 12) % 12] + (Math.floor(midi / 12) - 1);
-}
+const noteName = CORE.noteName;
 
 function buildGrid() {
   grid.innerHTML = "";
@@ -1661,7 +1596,7 @@ async function exportWav() {
   });
 
   const rendered = await oc.startRendering();
-  const blob = audioBufferToWav(rendered);
+  const blob = new Blob([CORE.audioBufferToWav(rendered)], { type: "audio/wav" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -1669,41 +1604,6 @@ async function exportWav() {
   a.click();
   URL.revokeObjectURL(url);
   setStatus("WAV exported.");
-}
-
-function audioBufferToWav(buf) {
-  const numCh = buf.numberOfChannels;
-  const len = buf.length;
-  const bytes = 44 + len * numCh * 2;
-  const ab = new ArrayBuffer(bytes);
-  const view = new DataView(ab);
-  const w = (off, str) => { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
-
-  w(0, "RIFF");
-  view.setUint32(4, bytes - 8, true);
-  w(8, "WAVE");
-  w(12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, numCh, true);
-  view.setUint32(24, buf.sampleRate, true);
-  view.setUint32(28, buf.sampleRate * numCh * 2, true);
-  view.setUint16(32, numCh * 2, true);
-  view.setUint16(34, 16, true);
-  w(36, "data");
-  view.setUint32(40, len * numCh * 2, true);
-
-  const chans = [];
-  for (let c = 0; c < numCh; c++) chans.push(buf.getChannelData(c));
-  let off = 44;
-  for (let i = 0; i < len; i++) {
-    for (let c = 0; c < numCh; c++) {
-      const s = Math.max(-1, Math.min(1, chans[c][i]));
-      view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-      off += 2;
-    }
-  }
-  return new Blob([ab], { type: "audio/wav" });
 }
 
 document.getElementById("exportWavBtn").addEventListener("click", exportWav);
