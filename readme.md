@@ -1,6 +1,8 @@
 # THUMP — browser drum machine
 
-A fully client-side drum machine & step sequencer with a Rust backend for sharing patterns and live jam rooms. All sound is synthesized in real time via the Web Audio API — zero samples, zero audio files.
+A fully client-side drum machine & step sequencer with a Rust backend for sharing patterns and live jam rooms. All sound is synthesized in real time via the Web Audio API — zero samples, zero audio files. Installable as a PWA.
+
+![ci](https://github.com/Alexandru2984/anything/actions/workflows/ci.yml/badge.svg)
 
 ![stack](https://img.shields.io/badge/client-vanilla_JS-orange) ![backend](https://img.shields.io/badge/backend-Rust%20%2B%20Axum-red) ![db](https://img.shields.io/badge/db-PostgreSQL-blue)
 
@@ -40,6 +42,11 @@ A fully client-side drum machine & step sequencer with a Rust backend for sharin
 - Public **gallery** with likes
 - **Jam rooms** — join a room and your pattern edits sync live to everyone else over WebSockets
 - **Export WAV** — offline render of the current pattern (2 loops) or the full arrangement
+
+### Product
+- **PWA** — installable on desktop/mobile, works offline (audio is 100% local)
+- Global error toast instead of silent failures
+- CI: syntax checks, 22 unit tests, jsdom UI smoke test, `cargo fmt/clippy/test`
 
 Everything is saved automatically to `localStorage`.
 
@@ -109,6 +116,14 @@ sudo -u postgres psql -c "CREATE DATABASE thump OWNER thump;"
 ```
 
 The table schema is created automatically by the server on first start.
+
+### Run with Docker (one command)
+
+```sh
+docker compose up -d --build
+```
+
+Brings up PostgreSQL + the server on http://localhost:3000.
 
 ## API reference
 
