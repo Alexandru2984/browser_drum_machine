@@ -19,10 +19,10 @@ use axum::{
     Json, Router,
 };
 use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod};
+use futures_util::{SinkExt, StreamExt};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use futures_util::{SinkExt, StreamExt};
 use tokio::sync::{broadcast, Mutex};
 
 // ---------- app state ----------
@@ -221,11 +221,7 @@ async fn like_pattern(State(state): State<AppState>, Path(id): Path<String>) -> 
 }
 
 fn err500<E: std::fmt::Display>(e: E) -> axum::response::Response {
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(e.to_string()),
-    )
-        .into_response()
+    (StatusCode::INTERNAL_SERVER_ERROR, Json(e.to_string())).into_response()
 }
 
 fn fmt_time(t: SystemTime) -> String {
@@ -249,6 +245,44 @@ fn fmt_time(t: SystemTime) -> String {
     let mo = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = if mo <= 2 { y + 1 } else { y };
     format!("{y:04}-{mo:02}-{d:02} {h:02}:{m:02}:{s:02}Z")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn gen_id_is_url_safe_and_sized() {
+        for _ in 0..200 {
+            let id = gen_id();
+            assert_eq!(id.len(), 8);
+            assert!(id
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()));
+        }
+    }
+
+    #[test]
+    fn gen_id_is_sufficiently_unique() {
+        let ids: std::collections::HashSet<String> = (0..500).map(|_| gen_id()).collect();
+        assert!(ids.len() > 480, "collisions too frequent: {}", ids.len());
+    }
+
+    #[test]
+    fn fmt_time_formats_epoch() {
+        assert_eq!(fmt_time(SystemTime::UNIX_EPOCH), "1970-01-01 00:00:00Z");
+    }
+
+    #[test]
+    fn fmt_time_formats_known_dates() {
+        // 2026-08-23 13:09:46 UTC (value used in manual API test earlier)
+        let t = SystemTime::UNIX_EPOCH + Duration::from_secs(1_787_490_586);
+        assert_eq!(fmt_time(t), "2026-08-23 13:09:46Z");
+        // leap-year day: 2024-02-29 12:00:00Z
+        let t = SystemTime::UNIX_EPOCH + Duration::from_secs(1_709_208_000);
+        assert_eq!(fmt_time(t), "2024-02-29 12:00:00Z");
+    }
 }
 
 // ---------- jam rooms ----------
@@ -347,7 +381,9 @@ async fn handle_socket(mut socket: WebSocket, rooms: Rooms, room_name: String) {
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+        )
         .init();
 
     let pool = db_pool().await;
@@ -356,9 +392,7 @@ async fn main() {
         client.execute(INIT_SQL, &[]).await.expect("init schema");
     }
 
-    let static_dir = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "../".to_string());
+    let static_dir = std::env::args().nth(1).unwrap_or_else(|| "../".to_string());
 
     let app = Router::new()
         .route("/api/patterns", get(list_patterns).post(save_pattern))
@@ -366,8 +400,7 @@ async fn main() {
         .route("/api/patterns/{id}/like", post(like_pattern))
         .route("/ws", get(ws_handler))
         .fallback_service(
-            tower_http::services::ServeDir::new(&static_dir)
-                .append_index_html_on_directories(true),
+            tower_http::services::ServeDir::new(&static_dir).append_index_html_on_directories(true),
         )
         .with_state(AppState {
             pool,
