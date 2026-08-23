@@ -641,7 +641,7 @@ function noteName(midi) {
 
 function buildGrid() {
   grid.innerHTML = "";
-  grid.style.gridTemplateColumns = `230px repeat(${state.steps}, minmax(14px, 1fr))`;
+  grid.style.gridTemplateColumns = `230px repeat(${state.steps}, minmax(26px, 1fr))`;
   const rows = [...PERC_TRACKS.map((t) => ({ ...t, kind: "perc" })), { ...BASS_TRACK, kind: "bass" }];
 
   rows.forEach((tr) => {
@@ -653,9 +653,13 @@ function buildGrid() {
       `<div class="row-tools">` +
       `<button class="mute-btn${tr.mute ? " active" : ""}" data-track="${tr.id}" title="Mute">M</button>` +
       `<input type="range" class="row-vol" data-track="${tr.id}" min="0" max="100" value="${tr.vol}" title="Volume" />` +
-      `<input type="range" class="row-fx" data-track="${tr.id}" data-fx="rev" min="0" max="100" value="${tr.rev}" title="Reverb send" />` +
-      `<input type="range" class="row-fx" data-track="${tr.id}" data-fx="dly" min="0" max="100" value="${tr.dly}" title="Delay send" />` +
       `<button class="copy-btn" data-track="${tr.id}" title="Click: copy row · Right-click: paste">⧉</button>` +
+      `</div>` +
+      `<div class="fx-line"><small>RV</small>` +
+      `<input type="range" class="row-fx" data-track="${tr.id}" data-fx="rev" min="0" max="100" value="${tr.rev}" title="Reverb send" />` +
+      `</div>` +
+      `<div class="fx-line"><small>DL</small>` +
+      `<input type="range" class="row-fx" data-track="${tr.id}" data-fx="dly" min="0" max="100" value="${tr.dly}" title="Delay send" />` +
       `</div>`;
     grid.appendChild(label);
 

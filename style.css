@@ -154,8 +154,8 @@ input[type="number"]:focus { border-color: var(--accent); }
 
 .grid {
   display: grid;
-  grid-template-columns: 230px repeat(16, minmax(14px, 1fr));
-  grid-template-rows: repeat(9, minmax(34px, 1fr));
+  grid-template-columns: 230px repeat(16, minmax(26px, 1fr));
+  grid-template-rows: repeat(9, minmax(58px, 1fr));
   gap: 5px;
   height: 100%;
 }
@@ -171,6 +171,7 @@ input[type="number"]:focus { border-color: var(--accent); }
   gap: 4px;
   padding-right: 10px;
   user-select: none;
+  overflow: hidden;
 }
 
 .row-head { display: flex; justify-content: space-between; align-items: baseline; }
@@ -228,10 +229,23 @@ input[type="number"]:focus { border-color: var(--accent); }
   min-width: 24px;
   height: 3px;
 }
-.row-fx {
-  width: 42px;
-  height: 3px;
+.fx-line {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.fx-line small {
+  font-size: 8px;
+  color: var(--dim);
+  width: 15px;
   flex: none;
+  letter-spacing: 0;
+}
+.row-fx {
+  flex: 1;
+  min-width: 0;
+  height: 3px;
 }
 .row-fx::-webkit-slider-thumb {
   width: 9px; height: 9px;
