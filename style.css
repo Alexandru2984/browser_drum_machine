@@ -395,6 +395,43 @@ input[type="number"]:focus { border-color: var(--accent); }
 
 #joinBtn.joined { border-color: var(--accent); color: var(--accent); }
 
+/* ---------- fill popover ---------- */
+.popover {
+  position: fixed;
+  top: 90px;
+  right: 26px;
+  z-index: 40;
+  width: 240px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.6);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.popover.hidden { display: none; }
+.popover h3 { font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: var(--dim); }
+.popover label { display: flex; flex-direction: column; gap: 5px; font-size: 11px; color: var(--dim); }
+.popover label b { color: var(--text); }
+.popover input[type="range"] { width: 100%; }
+
+.fill-tracks { display: flex; flex-wrap: wrap; gap: 4px; }
+.fill-track {
+  font: inherit;
+  font-size: 10px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--dim);
+  cursor: pointer;
+}
+.fill-track.on { color: #16100d; background: var(--accent); border-color: transparent; }
+
+.fill-actions { display: flex; justify-content: flex-end; }
+
 /* ---------- modal ---------- */
 .modal {
   position: fixed; inset: 0;

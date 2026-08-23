@@ -19,6 +19,7 @@
         <button id="playBtn" class="btn play" aria-label="Play">▶</button>
         <button id="clearBtn" class="btn" aria-label="Clear">Clear</button>
         <button id="randomBtn" class="btn" aria-label="Random">Dice</button>
+        <button id="fillBtn" class="btn" aria-label="Fill">Fill</button>
         <button id="undoBtn" class="btn" aria-label="Undo">↶</button>
         <button id="redoBtn" class="btn" aria-label="Redo">↷</button>
       </div>
@@ -92,6 +93,20 @@
       <span><kbd>space</kbd> play · <kbd>drag</kbd> paint · <kbd>shift+click</kbd> accent · <kbd>wheel</kbd> bass pitch · <kbd>r-click copy btn</kbd> paste row · <kbd>ctrl+z/y</kbd> undo/redo</span>
     </footer>
   </main>
+
+  <div id="fillPop" class="popover hidden">
+    <h3>Fill generator</h3>
+    <label>Length <b id="fillLenVal">4</b> steps
+      <input id="fillLen" type="range" min="1" max="8" value="4" />
+    </label>
+    <label>Density <b id="fillDenVal">70</b>%
+      <input id="fillDen" type="range" min="10" max="100" value="70" />
+    </label>
+    <div class="fill-tracks" id="fillTracks"></div>
+    <div class="fill-actions">
+      <button id="fillApply" class="btn play">Generate</button>
+    </div>
+  </div>
 
   <div id="modal" class="modal hidden">
     <div class="modal-card">

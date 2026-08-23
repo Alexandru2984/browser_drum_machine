@@ -1061,6 +1061,61 @@ document.getElementById("randomBtn").addEventListener("click", randomize);
 document.getElementById("undoBtn").addEventListener("click", undo);
 document.getElementById("redoBtn").addEventListener("click", redo);
 
+// ---------- fill generator ----------
+const fillPop = $("fillPop");
+const fillTracksEl = $("fillTracks");
+const fillSel = new Set(PERC_TRACKS.map((t) => t.id));
+
+PERC_TRACKS.forEach((t) => {
+  const b = document.createElement("button");
+  b.className = "fill-track on";
+  b.textContent = t.name;
+  b.addEventListener("click", () => {
+    if (fillSel.has(t.id)) fillSel.delete(t.id); else fillSel.add(t.id);
+    b.classList.toggle("on", fillSel.has(t.id));
+  });
+  fillTracksEl.appendChild(b);
+});
+
+$("fillBtn").addEventListener("click", () => fillPop.classList.toggle("hidden"));
+document.addEventListener("pointerdown", (e) => {
+  if (!fillPop.classList.contains("hidden") && !fillPop.contains(e.target) && e.target.id !== "fillBtn") {
+    fillPop.classList.add("hidden");
+  }
+});
+$("fillLen").addEventListener("input", (e) => ($("fillLenVal").textContent = e.target.value));
+$("fillDen").addEventListener("input", (e) => ($("fillDenVal").textContent = e.target.value));
+
+$("fillApply").addEventListener("click", () => {
+  const len = +$("fillLen").value;
+  const den = +$("fillDen").value / 100;
+  const pat = curPattern();
+  pushHistory();
+
+  for (const tr of PERC_TRACKS) {
+    if (!fillSel.has(tr.id)) continue;
+    for (let s = state.steps - len; s < state.steps; s++) {
+      const r = Math.random();
+      // rising density towards the last step, occasional accents
+      const p = den * (0.5 + 0.5 * ((s - (state.steps - len)) / Math.max(len - 1, 1)));
+      pat[tr.id][s] = r < p * 0.18 ? 2 : r < p ? 1 : 0;
+    }
+  }
+  if (fillSel.has("bass")) {
+    const scale = [0, 3, 5, 7, 10, 12];
+    for (let s = state.steps - len; s < state.steps; s++) {
+      if (Math.random() < den * 0.7) {
+        pat.bass[s] = { on: true, semi: scale[(Math.random() * scale.length) | 0] };
+      }
+    }
+  }
+  refreshCells();
+  saveLocal();
+  fillPop.classList.add("hidden");
+  setStatus(`Fill generated into last ${len} steps of ${state.activeSlot}.`);
+  jamBroadcast();
+});
+
 function randomize() {
   pushHistory();
   const density = { kick: 0.2, snare: 0.14, clap: 0.08, hatC: 0.45, hatO: 0.08, tom: 0.08, rim: 0.1, cowbell: 0.05 };
