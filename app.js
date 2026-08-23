@@ -95,7 +95,7 @@ const state = {
   mode: "pattern",
   steps: 16,
   activeSlot: "A",
-  song: ["A"],
+  song: [{ slot: "A", reps: 1 }],
   patterns: Object.fromEntries(SLOTS.map((s) => [s, emptyPattern(16)])),
 };
 
@@ -135,7 +135,7 @@ function deserialize(d) {
     state.steps = STEP_OPTIONS.includes(d.steps) ? d.steps : 16;
     state.mode = d.mode === "song" ? "song" : "pattern";
     state.activeSlot = SLOTS.includes(d.activeSlot) ? d.activeSlot : "A";
-    state.song = Array.isArray(d.song) && d.song.length ? d.song.filter((s) => SLOTS.includes(s)) : [state.activeSlot];
+    state.song = Array.isArray(d.song) && d.song.length ? normalizeSong(d.song) : [{ slot: state.activeSlot, reps: 1 }];
     for (const s of SLOTS) {
       const sp = d.patterns[s];
       if (!sp) continue;
@@ -525,7 +525,8 @@ const LOOKAHEAD_MS = 25;
 const SCHEDULE_AHEAD = 0.12;
 let nextNoteTime = 0;
 let schedStep = 0;
-let schedSongIdx = 0;
+let schedEntry = 0;
+let schedRep = 0;
 let timerId = null;
 
 function stepDuration() {
@@ -579,19 +580,23 @@ function scheduler() {
   while (nextNoteTime < engine.ac.currentTime + SCHEDULE_AHEAD) {
     const slot =
       state.mode === "song"
-        ? state.song[schedSongIdx % state.song.length]
+        ? state.song[schedEntry % state.song.length].slot
         : state.activeSlot;
     scheduleStep(slot, schedStep, nextNoteTime);
 
     if (state.mode === "song" && schedStep === state.steps - 1) {
-      const idx = schedSongIdx;
+      const idx = schedEntry;
       const delay = Math.max(0, (nextNoteTime + stepDuration() - engine.ac.currentTime) * 1000);
       setTimeout(() => highlightChain(idx), delay);
     }
 
     schedStep = (schedStep + 1) % state.steps;
     if (schedStep === 0 && state.mode === "song") {
-      schedSongIdx = (schedSongIdx + 1) % state.song.length;
+      schedRep++;
+      if (schedRep >= state.song[schedEntry % state.song.length].reps) {
+        schedEntry = (schedEntry + 1) % state.song.length;
+        schedRep = 0;
+      }
     }
     nextNoteTime += stepDuration();
   }
@@ -601,7 +606,8 @@ function start() {
   ensureAudio();
   state.playing = true;
   schedStep = 0;
-  schedSongIdx = 0;
+  schedEntry = 0;
+  schedRep = 0;
   nextNoteTime = engine.ac.currentTime + 0.06;
   timerId = setInterval(scheduler, LOOKAHEAD_MS);
   playBtn.textContent = "❚❚";
@@ -897,35 +903,43 @@ function isSlotEmpty(s) {
 
 function buildChain() {
   chainEl.innerHTML = "";
-  state.song.forEach((s, i) => {
+  state.song.forEach((entry, i) => {
     const chip = document.createElement("button");
     chip.className = "chain-chip";
-    chip.textContent = s;
-    chip.title = "Click to remove from song";
+    chip.textContent = entry.reps > 1 ? `${entry.slot}·${entry.reps}` : entry.slot;
+    chip.title = "Click: remove · Wheel: repeats (1–16)";
     chip.addEventListener("click", () => {
       pushHistory();
       state.song.splice(i, 1);
-      if (!state.song.length) state.song = [state.activeSlot];
+      if (!state.song.length) state.song = [{ slot: state.activeSlot, reps: 1 }];
       buildChain();
       saveLocal();
       jamBroadcast();
     });
+    chip.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      pushHistory();
+      entry.reps = Math.max(1, Math.min(16, entry.reps + (e.deltaY < 0 ? 1 : -1)));
+      buildChain();
+      saveLocal();
+      jamBroadcast();
+    }, { passive: false });
     chainEl.appendChild(chip);
   });
 }
 
 $("chainAdd").addEventListener("click", () => {
   pushHistory();
-  state.song.push(state.activeSlot);
+  state.song.push({ slot: state.activeSlot, reps: 1 });
   buildChain();
   saveLocal();
-  setStatus(`Appended ${state.activeSlot} — song has ${state.song.length} steps.`);
+  setStatus(`Appended ${state.activeSlot} — song has ${state.song.length} entries.`);
   jamBroadcast();
 });
 
 $("chainClear").addEventListener("click", () => {
   pushHistory();
-  state.song = [state.activeSlot];
+  state.song = [{ slot: state.activeSlot, reps: 1 }];
   buildChain();
   saveLocal();
 });
@@ -954,8 +968,9 @@ document.getElementById("stepsToggle").addEventListener("click", (e) => {
 
 function highlightChain(idx) {
   document.querySelectorAll(".chain-chip").forEach((c, i) => c.classList.toggle("now", i === idx));
+  const slot = state.song[idx] ? state.song[idx].slot : null;
   document.querySelectorAll(".slot").forEach((b) =>
-    b.classList.toggle("playing", state.mode === "song" && b.dataset.slot === state.song[idx])
+    b.classList.toggle("playing", state.mode === "song" && b.dataset.slot === slot)
   );
 }
 
@@ -1093,7 +1108,7 @@ async function exportWav() {
   const sd = 60 / state.bpm / 4;
 
   let sequence; // array of slots
-  if (state.mode === "song") sequence = state.song;
+  if (state.mode === "song") sequence = state.song.flatMap((e) => Array(e.reps).fill(e.slot));
   else sequence = new Array(2).fill(state.activeSlot); // 2 loops
 
   const totalSteps = sequence.length * state.steps;
