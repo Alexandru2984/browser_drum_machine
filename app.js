@@ -20,8 +20,8 @@ const slotBtnsEl = $("slotBtns");
 const chainEl = $("chain");
 
 // ---------- data ----------
-const STEPS = 16;
 const SLOTS = ["A", "B", "C", "D"];
+const STEP_OPTIONS = [16, 32];
 const STORAGE_KEY = "thump-v2";
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 const BASS_ROOT_MIDI = 33; // A1
@@ -80,10 +80,10 @@ const PRESETS = {
 };
 
 // ---------- state ----------
-function emptyPattern() {
+function emptyPattern(steps = state.steps) {
   const p = {};
-  for (const t of PERC_TRACKS) p[t.id] = new Array(STEPS).fill(0); // 0 off | 1 on | 2 accent
-  p.bass = Array.from({ length: STEPS }, () => ({ on: false, semi: 0 }));
+  for (const t of PERC_TRACKS) p[t.id] = new Array(steps).fill(0); // 0 off | 1 on | 2 accent
+  p.bass = Array.from({ length: steps }, () => ({ on: false, semi: 0 }));
   return p;
 }
 
@@ -93,13 +93,24 @@ const state = {
   swing: 12,
   masterVol: 0.8,
   mode: "pattern",
+  steps: 16,
   activeSlot: "A",
   song: ["A"],
-  patterns: Object.fromEntries(SLOTS.map((s) => [s, emptyPattern()])),
+  patterns: Object.fromEntries(SLOTS.map((s) => [s, emptyPattern(16)])),
 };
 
 function curPattern() {
   return state.patterns[state.activeSlot];
+}
+
+function resizePattern(p, steps) {
+  for (const t of PERC_TRACKS) {
+    const row = p[t.id];
+    while (row.length < steps) row.push(row.length % 4 === 0 ? row[0] ?? 0 : 0);
+    p[t.id] = row.slice(0, steps);
+  }
+  while (p.bass.length < steps) p.bass.push({ on: false, semi: 0 });
+  p.bass = p.bass.slice(0, steps);
 }
 
 // ---------- persistence ----------
@@ -108,6 +119,7 @@ function serialize() {
     v: 2,
     bpm: state.bpm,
     swing: state.swing,
+    steps: state.steps,
     mode: state.mode,
     activeSlot: state.activeSlot,
     song: [...state.song],
@@ -120,26 +132,42 @@ function deserialize(d) {
   try {
     state.bpm = d.bpm ?? state.bpm;
     state.swing = d.swing ?? state.swing;
+    state.steps = STEP_OPTIONS.includes(d.steps) ? d.steps : 16;
     state.mode = d.mode === "song" ? "song" : "pattern";
     state.activeSlot = SLOTS.includes(d.activeSlot) ? d.activeSlot : "A";
-    state.song = Array.isArray(d.song) && d.song.length ? d.song.filter((s) => SLOTS.includes(s)) : ["A"];
+    state.song = Array.isArray(d.song) && d.song.length ? d.song.filter((s) => SLOTS.includes(s)) : [state.activeSlot];
     for (const s of SLOTS) {
       const sp = d.patterns[s];
       if (!sp) continue;
+      const fresh = emptyPattern();
       for (const t of PERC_TRACKS) {
-        if (Array.isArray(sp[t.id])) state.patterns[s][t.id] = sp[t.id].map((v) => (v === 2 ? 2 : v ? 1 : 0));
+        if (Array.isArray(sp[t.id])) {
+          const row = sp[t.id].map((v) => (v === 2 ? 2 : v ? 1 : 0));
+          while (row.length < fresh[t.id].length) row.push(0);
+          state.patterns[s][t.id] = row.slice(0, fresh[t.id].length);
+        }
       }
       if (Array.isArray(sp.bass)) {
-        state.patterns[s].bass = sp.bass.map((b) => ({
+        const bass = sp.bass.map((b) => ({
           on: !!(b && b.on),
           semi: Math.max(-24, Math.min(24, +(b && b.semi) || 0)),
         }));
+        while (bass.length < fresh.bass.length) bass.push({ on: false, semi: 0 });
+        state.patterns[s].bass = bass.slice(0, fresh.bass.length);
       }
     }
     return true;
   } catch (_) {
     return false;
   }
+}
+
+function normalizeSong(song) {
+  // accepts ["A","B"] or [{slot:"A",reps:2}] → [{slot,reps}]
+  return song
+    .map((e) => (typeof e === "string" ? { slot: e, reps: 1 } : { slot: SLOTS.includes(e.slot) ? e.slot : "A", reps: Math.max(1, Math.min(16, +e.reps || 1)) }))
+    .filter((e) => SLOTS.includes(e.slot))
+    .slice(0, 64);
 }
 
 function saveLocal() {
@@ -171,6 +199,13 @@ function restoreLocal() {
   } catch (_) {
     return false;
   }
+}
+function normalizeSong(song) {
+  // accepts ["A","B"] or [{slot:"A",reps:2}] → [{slot,reps}] (song v2)
+  return song
+    .map((e) => (typeof e === "string" ? { slot: e, reps: 1 } : { slot: SLOTS.includes(e.slot) ? e.slot : "A", reps: Math.max(1, Math.min(16, +e.reps || 1)) }))
+    .filter((e) => SLOTS.includes(e.slot))
+    .slice(0, 64);
 }
 
 // ---------- history (undo/redo) ----------
@@ -513,8 +548,8 @@ function scheduleStep(slot, step, time) {
   if (b.on) {
     const swingOffset = step % 2 === 1 ? (state.swing / 100) * sd : 0;
     let len = sd;
-    for (let k = 1; k < STEPS; k++) {
-      if (pat.bass[(step + k) % STEPS].on) { len = k * sd; break; }
+    for (let k = 1; k < state.steps; k++) {
+      if (pat.bass[(step + k) % state.steps].on) { len = k * sd; break; }
     }
     const midi = BASS_ROOT_MIDI + b.semi;
     engine.bass(time + swingOffset, midi, len, b.semi % 12 === 0 ? 1.0 : 0.8);
@@ -548,13 +583,13 @@ function scheduler() {
         : state.activeSlot;
     scheduleStep(slot, schedStep, nextNoteTime);
 
-    if (state.mode === "song" && schedStep === STEPS - 1) {
+    if (state.mode === "song" && schedStep === state.steps - 1) {
       const idx = schedSongIdx;
       const delay = Math.max(0, (nextNoteTime + stepDuration() - engine.ac.currentTime) * 1000);
       setTimeout(() => highlightChain(idx), delay);
     }
 
-    schedStep = (schedStep + 1) % STEPS;
+    schedStep = (schedStep + 1) % state.steps;
     if (schedStep === 0 && state.mode === "song") {
       schedSongIdx = (schedSongIdx + 1) % state.song.length;
     }
@@ -598,6 +633,8 @@ function noteName(midi) {
 }
 
 function buildGrid() {
+  grid.innerHTML = "";
+  grid.style.gridTemplateColumns = `170px repeat(${state.steps}, 1fr)`;
   const rows = [...PERC_TRACKS.map((t) => ({ ...t, kind: "perc" })), { ...BASS_TRACK, kind: "bass" }];
 
   rows.forEach((tr) => {
@@ -615,7 +652,7 @@ function buildGrid() {
       `</div>`;
     grid.appendChild(label);
 
-    for (let s = 0; s < STEPS; s++) {
+    for (let s = 0; s < state.steps; s++) {
       const cell = document.createElement("div");
       cell.className = "cell" + (s % 4 === 0 ? " beat-mark" : "") + (tr.kind === "bass" ? " bass-cell" : "");
       cell.dataset.track = tr.id;
@@ -787,16 +824,21 @@ function pasteRow(targetTrack) {
   if (!rowClipboard) return setStatus("Clipboard empty — click ⧉ on a row first.");
   pushHistory();
   const pat = curPattern();
+  const fixLen = (arr, fill) => {
+    const out = arr.slice(0, state.steps);
+    while (out.length < state.steps) out.push(typeof fill === "function" ? fill() : fill);
+    return out;
+  };
   if (rowClipboard.trackId === "bass") {
     if (targetTrack !== "bass") {
-      pat[targetTrack] = rowClipboard.values.map((b) => (b.on ? 1 : 0));
+      pat[targetTrack] = fixLen(rowClipboard.values.map((b) => (b.on ? 1 : 0)), 0);
     } else {
-      pat.bass = rowClipboard.values.map((b) => ({ ...b }));
+      pat.bass = fixLen(rowClipboard.values.map((b) => ({ ...b })), () => ({ on: false, semi: 0 }));
     }
   } else if (targetTrack === "bass") {
-    pat.bass = rowClipboard.values.map((v) => ({ on: !!v, semi: 0 }));
+    pat.bass = fixLen(rowClipboard.values.map((v) => ({ on: !!v, semi: 0 })), () => ({ on: false, semi: 0 }));
   } else {
-    pat[targetTrack] = [...rowClipboard.values];
+    pat[targetTrack] = fixLen(rowClipboard.values, 0);
   }
   refreshCells();
   saveLocal();
@@ -898,6 +940,18 @@ $("modeToggle").addEventListener("click", (e) => {
   setStatus(state.mode === "song" ? "Song mode — chain plays in order." : "Pattern mode.");
 });
 
+document.getElementById("stepsToggle").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-steps]");
+  if (!btn || +btn.dataset.steps === state.steps) return;
+  pushHistory();
+  state.steps = +btn.dataset.steps;
+  for (const s of SLOTS) resizePattern(state.patterns[s], state.steps);
+  document.querySelectorAll("#stepsToggle .chip").forEach((b) => b.classList.toggle("active", b === btn));
+  buildGrid();
+  saveLocal();
+  setStatus(`${state.steps} steps per pattern.`);
+});
+
 function highlightChain(idx) {
   document.querySelectorAll(".chain-chip").forEach((c, i) => c.classList.toggle("now", i === idx));
   document.querySelectorAll(".slot").forEach((b) =>
@@ -935,6 +989,9 @@ function syncControls() {
   volVal.textContent = Math.round(state.masterVol * 100);
   document.querySelectorAll("#modeToggle .chip").forEach((b) =>
     b.classList.toggle("active", b.dataset.mode === state.mode)
+  );
+  document.querySelectorAll("#stepsToggle .chip").forEach((b) =>
+    b.classList.toggle("active", +b.dataset.steps === state.steps)
   );
 }
 
@@ -995,7 +1052,9 @@ function loadPresetIntoActive(name) {
   state.swing = p.swing;
   const pat = emptyPattern();
   for (const [id, row] of Object.entries(p.pattern)) {
-    pat[id] = row.split("").map(Number);
+    const arr = row.split("").map(Number);
+    while (arr.length < pat[id].length) arr.push(0);
+    pat[id] = arr;
   }
   state.patterns[state.activeSlot] = pat;
   refreshCells();
@@ -1037,7 +1096,7 @@ async function exportWav() {
   if (state.mode === "song") sequence = state.song;
   else sequence = new Array(2).fill(state.activeSlot); // 2 loops
 
-  const totalSteps = sequence.length * STEPS;
+  const totalSteps = sequence.length * state.steps;
   const dur = totalSteps * sd + 1.5;
 
   const oc = new OfflineAudioContext(2, Math.ceil(sr * dur), sr);
@@ -1047,7 +1106,7 @@ async function exportWav() {
   let t = 0.05;
   sequence.forEach((slot, seqIdx) => {
     const pat = state.patterns[slot];
-    for (let s = 0; s < STEPS; s++) {
+    for (let s = 0; s < state.steps; s++) {
       const time = t + s * sd;
       const sw = s % 2 === 1 ? (state.swing / 100) * sd : 0;
       for (const tr of PERC_TRACKS) {
@@ -1057,13 +1116,13 @@ async function exportWav() {
       const b = pat.bass[s];
       if (b.on) {
         let len = sd;
-        for (let k = 1; k < STEPS; k++) {
-          if (pat.bass[(s + k) % STEPS].on) { len = k * sd; break; }
+        for (let k = 1; k < state.steps; k++) {
+          if (pat.bass[(s + k) % state.steps].on) { len = k * sd; break; }
         }
         eng.bass(time + sw, BASS_ROOT_MIDI + b.semi, len, 0.9);
       }
     }
-    t += STEPS * sd;
+    t += state.steps * sd;
   });
 
   const rendered = await oc.startRendering();
@@ -1145,6 +1204,7 @@ async function loadFromServer(id) {
     const p = await res.json();
     pushHistory();
     if (deserialize(p.data)) {
+      buildGrid();
       refreshCells();
       refreshSlotsUI();
       buildChain();
@@ -1299,6 +1359,7 @@ syncControls();
     loadPresetIntoActive("house");
     return;
   }
+  buildGrid();
   refreshCells();
   refreshSlotsUI();
 })();
