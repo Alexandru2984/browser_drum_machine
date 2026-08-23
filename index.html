@@ -102,6 +102,23 @@
     </footer>
   </main>
 
+  <div id="autoPop" class="popover hidden">
+    <h3>Automation · <span id="autoSlotLbl"></span></h3>
+    <label>Cutoff <b id="autoCutVal">100%</b>
+      <input id="autoCut" type="range" min="5" max="100" value="100" />
+    </label>
+    <label>Reverb <b id="autoRevVal">100%</b>
+      <input id="autoRev" type="range" min="0" max="200" value="100" />
+    </label>
+    <label>Delay <b id="autoDlyVal">100%</b>
+      <input id="autoDly" type="range" min="0" max="200" value="100" />
+    </label>
+    <label class="auto-bpm">
+      <span><input id="autoBpmOn" type="checkbox" /> Tempo override <b id="autoBpmVal"></b></span>
+      <input id="autoBpm" type="range" min="60" max="200" value="124" disabled />
+    </label>
+  </div>
+
   <div id="fillPop" class="popover hidden">
     <h3>Fill generator</h3>
     <label>Length <b id="fillLenVal">4</b> steps

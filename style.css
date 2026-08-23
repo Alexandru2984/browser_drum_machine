@@ -360,6 +360,22 @@ select option { background: var(--panel); }
   cursor: pointer;
 }
 .chain-chip.now { box-shadow: 0 0 0 2px var(--text); }
+.chain-chip.has-auto::after {
+  content: "";
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 10px;
+  height: 2px;
+  border-radius: 1px;
+  background: #16100d;
+}
+.chain-chip.sel { outline: 2px solid #3fd97f; outline-offset: -2px; }
+
+.auto-bpm span { display: flex; align-items: center; gap: 6px; }
+.auto-bpm input[type="checkbox"] { accent-color: var(--accent); }
+.auto-bpm input[type="range"] { width: 100%; }
 
 .io-bar {
   display: flex;

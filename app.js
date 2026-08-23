@@ -255,11 +255,40 @@ function restoreLocal() {
   }
 }
 function normalizeSong(song) {
-  // accepts ["A","B"] or [{slot:"A",reps:2}] → [{slot,reps}] (song v2)
+  // accepts ["A","B"] or [{slot:"A",reps:2,auto:{...}}] → normalized entries
   return song
-    .map((e) => (typeof e === "string" ? { slot: e, reps: 1 } : { slot: SLOTS.includes(e.slot) ? e.slot : "A", reps: Math.max(1, Math.min(16, +e.reps || 1)) }))
+    .map((e) => {
+      if (typeof e === "string") return { slot: e, reps: 1, auto: undefined };
+      return {
+        slot: SLOTS.includes(e.slot) ? e.slot : "A",
+        reps: Math.max(1, Math.min(16, +e.reps || 1)),
+        auto: e.auto && typeof e.auto === "object" ? sanitizeAuto(e.auto) : undefined,
+      };
+    })
     .filter((e) => SLOTS.includes(e.slot))
     .slice(0, 64);
+}
+
+const AUTO_DEFAULTS = { cutoff: 1, rev: 1, dly: 1, bpm: 0 }; // bpm 0 = no override
+
+function sanitizeAuto(a) {
+  const clamp = (v, lo, hi, def) => (Number.isFinite(+v) ? Math.max(lo, Math.min(hi, +v)) : def);
+  return {
+    cutoff: clamp(a.cutoff, 0.05, 1, 1),
+    rev: clamp(a.rev, 0, 2, 1),
+    dly: clamp(a.dly, 0, 2, 1),
+    bpm: +a.bpm > 0 ? clamp(a.bpm, 60, 200, 0) : 0,
+  };
+}
+
+function getAuto(entry) {
+  return { ...AUTO_DEFAULTS, ...(entry && entry.auto ? entry.auto : {}) };
+}
+
+function hasAuto(entry) {
+  if (!entry || !entry.auto) return false;
+  const a = entry.auto;
+  return a.cutoff !== 1 || a.rev !== 1 || a.dly !== 1 || (a.bpm || 0) > 0;
 }
 
 // ---------- history (undo/redo) ----------
@@ -297,6 +326,10 @@ function redo() {
 // ============================================================
 function createEngine(ac) {
   const master = ac.createGain();
+  const macroLP = ac.createBiquadFilter();
+  macroLP.type = "lowpass";
+  macroLP.frequency.value = 18000;
+  macroLP.Q.value = 0.5;
   const comp = ac.createDynamicsCompressor();
   comp.threshold.value = -14;
   comp.knee.value = 8;
@@ -304,7 +337,8 @@ function createEngine(ac) {
   comp.attack.value = 0.003;
   comp.release.value = 0.2;
   comp.connect(ac.destination);
-  master.connect(comp);
+  master.connect(macroLP);
+  macroLP.connect(comp);
 
   // reverb send (generated impulse response)
   const revIn = ac.createGain();
@@ -362,8 +396,22 @@ function createEngine(ac) {
   function updateSends(id) {
     if (!ac.currentTime && ac.currentTime !== 0) return;
     const tr = [...PERC_TRACKS, ...MELODIC_TRACKS].find((x) => x.id === id);
-    sends[id].rev.gain.setTargetAtTime(tr.rev / 100, ac.currentTime, 0.02);
-    sends[id].dly.gain.setTargetAtTime(tr.dly / 100, ac.currentTime, 0.02);
+    sends[id].rev.gain.setTargetAtTime((tr.rev / 100) * macro.rev, ac.currentTime, 0.02);
+    sends[id].dly.gain.setTargetAtTime((tr.dly / 100) * macro.dly, ac.currentTime, 0.02);
+  }
+
+  const macro = { cutoff: 1, rev: 1, dly: 1 };
+
+  function setMacro(cutoff, rev, dly) {
+    macro.cutoff = cutoff;
+    macro.rev = rev;
+    macro.dly = dly;
+    const when = ac.currentTime;
+    macroLP.frequency.setTargetAtTime(Math.max(150, 18000 * cutoff * cutoff), when, 0.06);
+    for (const t of [...PERC_TRACKS, ...MELODIC_TRACKS]) {
+      sends[t.id].rev.gain.setTargetAtTime((t.rev / 100) * rev, when, 0.06);
+      sends[t.id].dly.gain.setTargetAtTime((t.dly / 100) * dly, when, 0.06);
+    }
   }
 
   const noiseLen = ac.sampleRate * 2;
@@ -594,7 +642,7 @@ function createEngine(ac) {
     }
   }
 
-  return { ac, master, gains, trigger, bass, lead, chords, setDelayTime, updateSends };
+  return { ac, master, gains, trigger, bass, lead, chords, setDelayTime, updateSends, setMacro };
 }
 
 let engine = null;
@@ -709,6 +757,24 @@ function scheduler() {
       state.mode === "song"
         ? state.song[schedEntry % state.song.length].slot
         : state.activeSlot;
+
+    if (state.mode === "song") {
+      const len = state.song.length;
+      const ea = getAuto(state.song[schedEntry]);
+      const pa = getAuto(state.song[(schedEntry - 1 + len) % len]);
+      const f = schedRep === 0 ? (schedStep + 1) / state.steps : 1;
+      const lerp = (a, b) => a + (b - a) * f;
+      engine.setMacro(lerp(pa.cutoff, ea.cutoff), lerp(pa.rev, ea.rev), lerp(pa.dly, ea.dly));
+      const pb = pa.bpm > 0 ? pa.bpm : state.bpm;
+      const eb = ea.bpm > 0 ? ea.bpm : state.bpm;
+      const target = lerp(pb, eb);
+      if (Math.abs(target - state.bpm) > 0.25) {
+        state.bpm = target;
+        bpmInput.value = Math.round(target);
+        bpmVal.textContent = Math.round(target);
+      }
+    }
+
     scheduleStep(slot, schedStep, nextNoteTime);
 
     if (state.mode === "song" && schedStep === state.steps - 1) {
@@ -747,6 +813,7 @@ function stop() {
   clearInterval(timerId);
   playBtn.textContent = "▶";
   playBtn.classList.remove("on");
+  if (engine) engine.setMacro(1, 1, 1);
   document.querySelectorAll(".cell.playhead").forEach((c) => c.classList.remove("playhead"));
   document.querySelectorAll(".chain-chip.now").forEach((c) => c.classList.remove("now"));
   document.querySelectorAll(".slot.playing").forEach((s) => s.classList.remove("playing"));
@@ -1077,13 +1144,16 @@ function buildChain() {
   chainEl.innerHTML = "";
   state.song.forEach((entry, i) => {
     const chip = document.createElement("button");
-    chip.className = "chain-chip";
+    chip.className = "chain-chip" + (hasAuto(entry) ? " has-auto" : "") + (i === autoSelIdx ? " sel" : "");
     chip.textContent = entry.reps > 1 ? `${entry.slot}·${entry.reps}` : entry.slot;
-    chip.title = "Click: remove · Wheel: repeats (1–16)";
-    chip.addEventListener("click", () => {
+    chip.title = "Click: automation · Wheel: repeats · Right-click: remove";
+    chip.addEventListener("click", () => openAutoEditor(i));
+    chip.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
       pushHistory();
       state.song.splice(i, 1);
       if (!state.song.length) state.song = [{ slot: state.activeSlot, reps: 1 }];
+      if (autoSelIdx >= state.song.length) autoSelIdx = -1;
       buildChain();
       saveLocal();
       jamBroadcast();
@@ -1099,6 +1169,71 @@ function buildChain() {
     chainEl.appendChild(chip);
   });
 }
+
+// ---------- automation editor ----------
+let autoSelIdx = -1;
+const autoPop = $("autoPop");
+
+function openAutoEditor(i) {
+  autoSelIdx = i;
+  const entry = state.song[i];
+  const a = getAuto(entry);
+  $("autoSlotLbl").textContent = `${entry.slot}·${entry.reps}`;
+  $("autoCut").value = Math.round(a.cutoff * 100);
+  $("autoCutVal").textContent = Math.round(a.cutoff * 100) + "%";
+  $("autoRev").value = Math.round(a.rev * 100);
+  $("autoRevVal").textContent = Math.round(a.rev * 100) + "%";
+  $("autoDly").value = Math.round(a.dly * 100);
+  $("autoDlyVal").textContent = Math.round(a.dly * 100) + "%";
+  $("autoBpmOn").checked = a.bpm > 0;
+  $("autoBpm").disabled = a.bpm <= 0;
+  $("autoBpm").value = a.bpm > 0 ? a.bpm : Math.round(state.bpm);
+  $("autoBpmVal").textContent = a.bpm > 0 ? a.bpm + " BPM" : "";
+  buildChain();
+  autoPop.classList.remove("hidden");
+}
+
+function autoSave(patch) {
+  if (autoSelIdx < 0 || !state.song[autoSelIdx]) return;
+  pushHistory();
+  const entry = state.song[autoSelIdx];
+  entry.auto = sanitizeAuto({ ...getAuto(entry), ...patch });
+  if (!hasAuto(entry)) delete entry.auto;
+  buildChain();
+  saveLocal();
+  jamBroadcast();
+}
+
+$("autoCut").addEventListener("input", (e) => {
+  $("autoCutVal").textContent = e.target.value + "%";
+  autoSave({ cutoff: e.target.value / 100 });
+});
+$("autoRev").addEventListener("input", (e) => {
+  $("autoRevVal").textContent = e.target.value + "%";
+  autoSave({ rev: e.target.value / 100 });
+});
+$("autoDly").addEventListener("input", (e) => {
+  $("autoDlyVal").textContent = e.target.value + "%";
+  autoSave({ dly: e.target.value / 100 });
+});
+$("autoBpmOn").addEventListener("change", (e) => {
+  $("autoBpm").disabled = !e.target.checked;
+  $("autoBpmVal").textContent = e.target.checked ? $("autoBpm").value + " BPM" : "";
+  autoSave({ bpm: e.target.checked ? +$("autoBpm").value : 0 });
+});
+$("autoBpm").addEventListener("input", (e) => {
+  $("autoBpmVal").textContent = e.target.value + " BPM";
+  autoSave({ bpm: +e.target.value });
+});
+document.addEventListener("pointerdown", (e) => {
+  if (autoPop.classList.contains("hidden")) return;
+  const chip = e.target.closest(".chain-chip");
+  if (!autoPop.contains(e.target) && !(chip && chip.classList.contains("sel"))) {
+    autoPop.classList.add("hidden");
+    autoSelIdx = -1;
+    buildChain();
+  }
+});
 
 $("chainAdd").addEventListener("click", () => {
   pushHistory();
@@ -1381,21 +1516,34 @@ async function exportWav() {
   const sr = 44100;
   const sd = 60 / state.bpm / 4;
 
-  let sequence; // array of slots
-  if (state.mode === "song") sequence = state.song.flatMap((e) => Array(e.reps).fill(e.slot));
-  else sequence = new Array(2).fill(state.activeSlot); // 2 loops
+  let bars; // [{slot, auto}]
+  if (state.mode === "song") {
+    bars = [];
+    state.song.forEach((e, i) => {
+      const cur = getAuto(e);
+      const prev = getAuto(state.song[(i - 1 + state.song.length) % state.song.length]);
+      for (let r = 0; r < e.reps; r++) bars.push({ slot: e.slot, cur, prev, first: r === 0 });
+    });
+  } else {
+    bars = Array.from({ length: 2 }, () => ({ slot: state.activeSlot, cur: { ...AUTO_DEFAULTS }, prev: { ...AUTO_DEFAULTS }, first: false }));
+  }
 
-  const totalSteps = sequence.length * state.steps;
-  const dur = totalSteps * sd + 1.5;
+  const totalSteps = bars.length * state.steps;
+  const dur = bars.reduce((acc, b) => acc + state.steps * (60 / (b.cur.bpm > 0 ? b.cur.bpm : state.bpm) / 4), 1.5);
 
   const oc = new OfflineAudioContext(2, Math.ceil(sr * dur), sr);
   const eng = createEngine(oc);
   eng.master.gain.value = state.masterVol;
 
-  let t = 0.05;
+  const lerp = (a, b, f) => a + (b - a) * f;
   const h = state.humanize / 100;
-  sequence.forEach((slot, seqIdx) => {
-    const pat = state.patterns[slot];
+  let t = 0.05;
+  bars.forEach((bar) => {
+    const barBpm = bar.cur.bpm > 0 ? bar.cur.bpm : state.bpm;
+    const sd = 60 / barBpm / 4;
+    const f = bar.first ? 1 : 1; // constant per bar in export
+    eng.setMacro(lerp(bar.prev.cutoff, bar.cur.cutoff, f), lerp(bar.prev.rev, bar.cur.rev, f), lerp(bar.prev.dly, bar.cur.dly, f));
+    const pat = state.patterns[bar.slot];
     for (let s = 0; s < state.steps; s++) {
       const time = t + s * sd;
       const sw = s % 2 === 1 ? (state.swing / 100) * sd : 0;
