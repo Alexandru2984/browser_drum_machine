@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>THUMP — browser drum machine</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%23ff5c39'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%230d0f14'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="machine">
+    <header class="top">
+      <div class="brand">
+        <span class="logo"></span>
+        <h1>THUMP</h1>
+        <span class="tag">browser drum machine · zero samples</span>
+      </div>
+      <div class="transport">
+        <button id="playBtn" class="btn play" aria-label="Play">▶</button>
+        <button id="clearBtn" class="btn" aria-label="Clear">Clear</button>
+        <button id="randomBtn" class="btn" aria-label="Random">Dice</button>
+        <button id="undoBtn" class="btn" aria-label="Undo">↶</button>
+        <button id="redoBtn" class="btn" aria-label="Redo">↷</button>
+      </div>
+    </header>
+
+    <section class="controls">
+      <label class="ctl">
+        <span>Tempo <b id="bpmVal">124</b></span>
+        <input id="bpm" type="range" min="60" max="200" value="124" />
+      </label>
+      <label class="ctl">
+        <span>Swing <b id="swingVal">12%</b></span>
+        <input id="swing" type="range" min="0" max="60" value="12" />
+      </label>
+      <label class="ctl">
+        <span>Master <b id="volVal">80</b></span>
+        <input id="vol" type="range" min="0" max="100" value="80" />
+      </label>
+      <div class="presets" id="presets">
+        <button data-preset="house" class="btn chip active">House</button>
+        <button data-preset="breaks" class="btn chip">Breaks</button>
+        <button data-preset="techno" class="btn chip">Techno</button>
+        <button data-preset="hiphop" class="btn chip">Hip-Hop</button>
+      </div>
+    </section>
+
+    <section class="slots-bar">
+      <div class="slot-btns" id="slotBtns"></div>
+      <div class="mode-toggle" id="modeToggle">
+        <button data-mode="pattern" class="btn chip active">Pattern</button>
+        <button data-mode="song" class="btn chip">Song</button>
+      </div>
+      <div class="song-editor">
+        <div id="chain" class="chain"></div>
+        <button id="chainAdd" class="btn chip" title="Append current slot to song">+ Chain</button>
+        <button id="chainClear" class="btn chip">Reset</button>
+      </div>
+    </section>
+
+    <section class="grid-wrap">
+      <div id="grid" class="grid"></div>
+    </section>
+
+    <section class="io-bar">
+      <input id="shareTitle" placeholder="title" maxlength="64" />
+      <input id="shareAuthor" placeholder="your name" maxlength="24" />
+      <button id="shareBtn" class="btn">Share</button>
+      <button id="galleryBtn" class="btn">Gallery</button>
+      <button id="exportBtn" class="btn">Export WAV</button>
+      <span class="spacer"></span>
+      <span class="jam-box">
+        <span class="jam-dot" id="jamDot"></span>
+        <input id="roomName" placeholder="room" value="lobby" maxlength="24" />
+        <button id="joinBtn" class="btn">Join</button>
+      </span>
+    </section>
+
+    <footer class="bottom">
+      <span id="status">Press play — audio is synthesized live via Web Audio API.</span>
+      <span><kbd>space</kbd> play · <kbd>drag</kbd> paint · <kbd>shift+click</kbd> accent · <kbd>wheel</kbd> bass pitch · <kbd>r-click copy btn</kbd> paste row · <kbd>ctrl+z/y</kbd> undo/redo</span>
+    </footer>
+  </main>
+
+  <div id="modal" class="modal hidden">
+    <div class="modal-card">
+      <header>
+        <h2>Gallery</h2>
+        <button id="modalClose" class="btn">×</button>
+      </header>
+      <div id="galleryList" class="gallery-list"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
