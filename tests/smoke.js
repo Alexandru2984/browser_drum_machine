@@ -110,6 +110,26 @@ try {
 
 // PLAY — the one that broke
 try {
+  // tabs navigation
+  doc.querySelectorAll("#tabs button").forEach((b) => fire(b, "click"));
+  if (!doc.getElementById("viewShare").classList.contains("active")) {
+    errors.push("tabs: share view not active after clicking all tabs");
+  }
+  fire(doc.querySelector('#tabs [data-view="grid"]'), "click");
+  if (!doc.getElementById("viewGrid").classList.contains("active")) {
+    errors.push("tabs: grid view not active after switching back");
+  }
+  // mixer: mute/solo toggles + master slider
+  clickAll(".mix-mute", "mix-mute");
+  clickAll(".mix-solo", "mix-solo");
+  const masterSlider = doc.querySelector(".mix-master");
+  masterSlider.value = 50;
+  masterSlider.dispatchEvent(new window.Event("input", { bubbles: true }));
+  // mobile transport + tap tempo + metronome toggle
+  fire(doc.getElementById("mBpmUp"), "click");
+  fire(doc.getElementById("mBpmDown"), "click");
+  fire(doc.getElementById("tapBtn"), "click");
+  fire(doc.getElementById("metroChk"), "click");
   // timeline: add entries, open automation, remove via contextmenu
   fire(doc.getElementById("chainAdd"), "click");
   fire(doc.getElementById("chainAdd"), "click");

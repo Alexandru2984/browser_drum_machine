@@ -32,19 +32,19 @@ const BASS_ROOT_MIDI = CORE.BASS_ROOT_MIDI;
 const STORAGE_KEY = "thump-v2";
 
 const PERC_TRACKS = [
-  { id: "kick",    name: "Kick",    note: "C2",  vol: 90, mute: false, rev: 0,  dly: 0 },
-  { id: "snare",   name: "Snare",   note: "D3",  vol: 80, mute: false, rev: 22, dly: 0 },
-  { id: "clap",    name: "Clap",    note: "D#3", vol: 75, mute: false, rev: 28, dly: 0 },
-  { id: "hatC",    name: "Hat Cl",  note: "F#5", vol: 62, mute: false, rev: 6,  dly: 14 },
-  { id: "hatO",    name: "Hat Op",  note: "A#5", vol: 55, mute: false, rev: 10, dly: 30 },
-  { id: "tom",     name: "Tom",     note: "G3",  vol: 70, mute: false, rev: 12, dly: 0 },
-  { id: "rim",     name: "Rim",     note: "E4",  vol: 60, mute: false, rev: 8,  dly: 10 },
-  { id: "cowbell", name: "Cowbell", note: "C#4", vol: 50, mute: false, rev: 5,  dly: 8 },
+  { id: "kick",    name: "Kick",    note: "C2",  vol: 90, mute: false, solo: false, rev: 0,  dly: 0 },
+  { id: "snare",   name: "Snare",   note: "D3",  vol: 80, mute: false, solo: false, rev: 22, dly: 0 },
+  { id: "clap",    name: "Clap",    note: "D#3", vol: 75, mute: false, solo: false, rev: 28, dly: 0 },
+  { id: "hatC",    name: "Hat Cl",  note: "F#5", vol: 62, mute: false, solo: false, rev: 6,  dly: 14 },
+  { id: "hatO",    name: "Hat Op",  note: "A#5", vol: 55, mute: false, solo: false, rev: 10, dly: 30 },
+  { id: "tom",     name: "Tom",     note: "G3",  vol: 70, mute: false, solo: false, rev: 12, dly: 0 },
+  { id: "rim",     name: "Rim",     note: "E4",  vol: 60, mute: false, solo: false, rev: 8,  dly: 10 },
+  { id: "cowbell", name: "Cowbell", note: "C#4", vol: 50, mute: false, solo: false, rev: 5,  dly: 8 },
 ];
 
-const BASS_TRACK = { id: "bass", name: "Bass", note: "A1", vol: 78, mute: false, rev: 4, dly: 0 };
-const LEAD_TRACK = { id: "lead", name: "Lead", note: "A3", vol: 62, mute: false, rev: 18, dly: 22 };
-const CHORDS_TRACK = { id: "chords", name: "Chords", note: "A2", vol: 58, mute: false, rev: 30, dly: 8 };
+const BASS_TRACK = { id: "bass", name: "Bass", note: "A1", vol: 78, mute: false, solo: false, rev: 4, dly: 0 };
+const LEAD_TRACK = { id: "lead", name: "Lead", note: "A3", vol: 62, mute: false, solo: false, rev: 18, dly: 22 };
+const CHORDS_TRACK = { id: "chords", name: "Chords", note: "A2", vol: 58, mute: false, solo: false, rev: 30, dly: 8 };
 
 const MELODIC_TRACKS = [BASS_TRACK, LEAD_TRACK, CHORDS_TRACK];
 
@@ -88,6 +88,44 @@ const PRESETS = {
       snare: "0000100000001000",
       hatC:  "0010101000101010",
       tom:   "0000000000000100",
+    },
+  },
+  trap: {
+    bpm: 140, swing: 4,
+    pattern: {
+      kick:  "1000000000100000",
+      snare: "0000000010000000",
+      hatC:  "1011101110111011",
+      tom:   "0000000000000010",
+    },
+  },
+  dnb: {
+    bpm: 174, swing: 0,
+    pattern: {
+      kick:  "1000000000001000",
+      snare: "0000100000001000",
+      hatC:  "0010001000100010",
+      rim:   "0000000000100010",
+    },
+  },
+  disco: {
+    bpm: 120, swing: 10,
+    pattern: {
+      kick:  "1000100010001000",
+      clap:  "0000100000001000",
+      hatO:  "0010001000100010",
+      hatC:  "1010101010101010",
+      cowbell: "0000000000001000",
+    },
+  },
+  latin: {
+    bpm: 100, swing: 15,
+    pattern: {
+      kick:    "1001000000100100",
+      rim:     "1001001000100010",
+      cowbell: "0010001000100000",
+      tom:     "0000001000000010",
+      hatC:    "0010101000101010",
     },
   },
 };
@@ -201,7 +239,7 @@ function saveLocal() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       ...serialize(),
-      tracks: Object.fromEntries([...PERC_TRACKS, ...MELODIC_TRACKS].map((t) => [t.id, { vol: t.vol, mute: t.mute, rev: t.rev, dly: t.dly }])),
+      tracks: Object.fromEntries([...PERC_TRACKS, ...MELODIC_TRACKS].map((t) => [t.id, { vol: t.vol, mute: t.mute, solo: t.solo, rev: t.rev, dly: t.dly }])),
     }));
   } catch (_) {}
 }
@@ -217,6 +255,7 @@ function restoreLocal() {
       if (d.tracks[t.id]) {
         t.vol = d.tracks[t.id].vol ?? t.vol;
         t.mute = !!d.tracks[t.id].mute;
+          t.solo = !!d.tracks[t.id].solo;
         t.rev = d.tracks[t.id].rev ?? t.rev;
         t.dly = d.tracks[t.id].dly ?? t.dly;
       }
@@ -569,7 +608,7 @@ function createEngine(ac) {
 
   function trigger(id, tt, value, velMul = 1) {
     const tr = [...PERC_TRACKS, ...MELODIC_TRACKS].find((x) => x.id === id);
-    if (tr && tr.mute) return;
+        if (tr && !isAudible(tr)) return;
     const v = (value >= 2 ? 1.0 : 0.72) * velMul;
     switch (id) {
       case "kick": return kick(tt, v);
@@ -596,6 +635,12 @@ function ensureAudio() {
 
 function trackLevel(t) {
   return Math.pow(t.vol / 100, 2) * 0.9;
+}
+
+function isAudible(tr) {
+  if (tr.mute) return false;
+  const anySolo = [...PERC_TRACKS, ...MELODIC_TRACKS].some((t) => t.solo);
+  return !anySolo || tr.solo;
 }
 
 function updateTrackGain(id) {
@@ -641,7 +686,7 @@ function scheduleStep(slot, step, time) {
   }
 
   const b = pat.bass[step];
-  if (b.on && !BASS_TRACK.mute) {
+  if (b.on && isAudible(BASS_TRACK)) {
     const swingOffset = step % 2 === 1 ? (state.swing / 100) * sd : 0;
     let len = sd;
     for (let k = 1; k < state.steps; k++) {
@@ -653,7 +698,7 @@ function scheduleStep(slot, step, time) {
   }
 
   const ld = pat.lead[step];
-  if (ld.on && !LEAD_TRACK.mute) {
+  if (ld.on && isAudible(LEAD_TRACK)) {
     const swingOffset = step % 2 === 1 ? (state.swing / 100) * sd : 0;
     let len = sd;
     for (let k = 1; k < state.steps; k++) {
@@ -664,7 +709,7 @@ function scheduleStep(slot, step, time) {
   }
 
   const ch = pat.chords[step];
-  if (ch.on && !CHORDS_TRACK.mute) {
+  if (ch.on && isAudible(CHORDS_TRACK)) {
     const swingOffset = step % 2 === 1 ? (state.swing / 100) * sd : 0;
     let len = sd;
     for (let k = 1; k < state.steps; k++) {
@@ -689,7 +734,17 @@ function updatePlayhead(step, time) {
   const delay = Math.max(0, (time - engine.ac.currentTime) * 1000);
   setTimeout(() => {
     document.querySelectorAll(".cell.playhead").forEach((c) => c.classList.remove("playhead"));
-    document.querySelectorAll(`.cell[data-step="${step}"]`).forEach((c) => c.classList.add("playhead"));
+    const cells = document.querySelectorAll(`.cell[data-step="${step}"]`);
+    cells.forEach((c) => c.classList.add("playhead"));
+    // keep the playhead in view (phones / narrow windows)
+    if (cells.length && state.playing) {
+      const wrap = document.querySelector(".grid-wrap");
+      const r = cells[0].getBoundingClientRect();
+      const w = wrap.getBoundingClientRect();
+      if (r.left < w.left + 40 || r.right > w.right - 40) {
+        wrap.scrollLeft += r.left - (w.left + w.width / 2);
+      }
+    }
   }, delay);
 }
 
@@ -746,6 +801,7 @@ function start() {
   nextNoteTime = engine.ac.currentTime + 0.06;
   timerId = setInterval(scheduler, LOOKAHEAD_MS);
   playBtn.textContent = "❚❚";
+  syncMobilePlayBtn();
   playBtn.classList.add("on");
   setStatus(state.mode === "song" ? `Playing song · ${state.bpm} BPM` : `Playing ${state.activeSlot} · ${state.bpm} BPM`);
 }
@@ -755,6 +811,7 @@ function stop() {
   clearInterval(timerId);
   playBtn.textContent = "▶";
   playBtn.classList.remove("on");
+  syncMobilePlayBtn();
   if (engine) engine.setMacro(1, 1, 1);
   document.querySelectorAll(".cell.playhead").forEach((c) => c.classList.remove("playhead"));
   document.querySelectorAll(".tl-block.now").forEach((c) => c.classList.remove("now"));
@@ -774,7 +831,7 @@ const noteName = CORE.noteName;
 
 function buildGrid() {
   grid.innerHTML = "";
-  grid.style.gridTemplateColumns = `var(--label-w) repeat(${state.steps}, minmax(26px, 1fr))`;
+  grid.style.gridTemplateColumns = `var(--label-w) repeat(${state.steps}, minmax(var(--cell-min, 26px), 1fr))`;
   const rows = [
     ...PERC_TRACKS.map((t) => ({ ...t, kind: "perc" })),
     { ...BASS_TRACK, kind: "bass" },
@@ -790,13 +847,7 @@ function buildGrid() {
       `<div class="row-head"><span class="row-name">${tr.name}</span><small>${tr.kind === "bass" ? "acid" : tr.note}</small></div>` +
       `<div class="row-tools">` +
       `<button class="mute-btn${tr.mute ? " active" : ""}" data-track="${tr.id}" title="Mute">M</button>` +
-      `<input type="range" class="row-vol" data-track="${tr.id}" min="0" max="100" value="${tr.vol}" title="Volume" />` +
       `<button class="copy-btn" data-track="${tr.id}" title="Click: copy row · Right-click: paste">⧉</button>` +
-      `</div>` +
-      `<div class="fx-line"><small>RV</small>` +
-      `<input type="range" class="row-fx" data-track="${tr.id}" data-fx="rev" min="0" max="100" value="${tr.rev}" title="Reverb send" />` +
-      `<small>DL</small>` +
-      `<input type="range" class="row-fx" data-track="${tr.id}" data-fx="dly" min="0" max="100" value="${tr.dly}" title="Delay send" />` +
       `</div>`;
     grid.appendChild(label);
 
@@ -823,27 +874,6 @@ function buildGrid() {
   });
   window.addEventListener("pointerup", () => (painting = false));
 
-  grid.addEventListener("input", (e) => {
-    const vol = e.target.closest(".row-vol");
-    if (vol) {
-      const tr = [...PERC_TRACKS, ...MELODIC_TRACKS].find((x) => x.id === vol.dataset.track);
-      tr.vol = +vol.value;
-      updateTrackGain(tr.id);
-      saveLocal();
-      return;
-    }
-    const fx = e.target.closest(".row-fx");
-    if (fx) {
-      const tr = [...PERC_TRACKS, ...MELODIC_TRACKS].find((x) => x.id === fx.dataset.track);
-      tr[fx.dataset.fx] = +fx.value;
-      if (engine) {
-        engine.ac; // touch to ensure engine exists
-        updateSendsFor(tr.id);
-      }
-      saveLocal();
-    }
-  });
-
   grid.addEventListener("click", (e) => {
     const btn = e.target.closest(".mute-btn");
     if (btn) {
@@ -851,13 +881,14 @@ function buildGrid() {
       tr.mute = !tr.mute;
       btn.classList.toggle("active", tr.mute);
       btn.closest(".row-label").classList.toggle("muted", tr.mute);
+      refreshMixer();
       saveLocal();
       setStatus(`${tr.name} ${tr.mute ? "muted" : "unmuted"}.`);
     }
   });
 
   grid.addEventListener("contextmenu", (e) => {
-    const btn = e.target.closest(".mute-btn, .copy-btn, .row-vol");
+    const btn = e.target.closest(".mute-btn, .copy-btn");
     if (btn) e.preventDefault();
     if (!btn) return;
     if (btn.classList.contains("copy-btn")) pasteRow(btn.dataset.track);
@@ -977,10 +1008,6 @@ function refreshRowLabels() {
     const tr = [...PERC_TRACKS, ...MELODIC_TRACKS].find((x) => x.id === id);
     label.classList.toggle("muted", tr.mute);
     label.querySelector(".mute-btn").classList.toggle("active", tr.mute);
-    label.querySelector(".row-vol").value = tr.vol;
-    const [rev, dly] = label.querySelectorAll(".row-fx");
-    rev.value = tr.rev;
-    dly.value = tr.dly;
   });
 }
 
@@ -1053,6 +1080,8 @@ function selectSlot(s) {
   state.activeSlot = s;
   refreshSlotsUI();
   refreshCells();
+  $("chainSlotLbl").textContent = s;
+  updateMobileBar();
   saveLocal();
   jamBroadcast();
 }
@@ -1368,6 +1397,7 @@ function syncControls() {
   );
   stepsInput.value = state.steps;
   document.getElementById("stepsVal").textContent = state.steps;
+  updateMobileBar();
 }
 
 playBtn.addEventListener("click", () => (state.playing ? stop() : start()));
@@ -1616,7 +1646,7 @@ document.getElementById("exportWavBtn").addEventListener("click", exportWav);
 document.getElementById("saveProjBtn").addEventListener("click", () => {
   const data = {
     ...serialize(),
-    tracks: Object.fromEntries([...PERC_TRACKS, ...MELODIC_TRACKS].map((t) => [t.id, { vol: t.vol, mute: t.mute, rev: t.rev, dly: t.dly }])),
+    tracks: Object.fromEntries([...PERC_TRACKS, ...MELODIC_TRACKS].map((t) => [t.id, { vol: t.vol, mute: t.mute, solo: t.solo, rev: t.rev, dly: t.dly }])),
   };
   const blob = new Blob([JSON.stringify(data, null, 1)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -1644,6 +1674,7 @@ projFile.addEventListener("change", () => {
           if (d.tracks[t.id]) {
             t.vol = d.tracks[t.id].vol ?? t.vol;
             t.mute = !!d.tracks[t.id].mute;
+          t.solo = !!d.tracks[t.id].solo;
             t.rev = d.tracks[t.id].rev ?? t.rev;
             t.dly = d.tracks[t.id].dly ?? t.dly;
           }
@@ -1833,6 +1864,104 @@ document.getElementById("joinBtn").addEventListener("click", () => {
 });
 
 // ============================================================
+// UI — mixer
+// ============================================================
+const mixerEl = document.getElementById("mixer");
+
+function buildMixer() {
+  mixerEl.innerHTML = "";
+  const tracks = [...PERC_TRACKS, ...MELODIC_TRACKS];
+
+  tracks.forEach((tr) => {
+    const strip = document.createElement("div");
+    strip.className = "strip";
+    strip.dataset.track = tr.id;
+    strip.innerHTML =
+      `<div class="strip-name">${tr.name}</div>` +
+      `<div class="strip-note">${tr.kind === "bass" || tr.id === "bass" ? "acid" : tr.note || ""}</div>` +
+      `<input type="range" class="vslider mix-vol" data-track="${tr.id}" min="0" max="100" value="${tr.vol}" title="Volume" />` +
+      `<div class="strip-btns">` +
+      `<button class="mix-mute${tr.mute ? " on-m" : ""}" data-track="${tr.id}" title="Mute">M</button>` +
+      `<button class="mix-solo${tr.solo ? " on-s" : ""}" data-track="${tr.id}" title="Solo">S</button>` +
+      `</div>` +
+      `<div class="strip-fx">` +
+      `<label><small>RV</small><input type="range" class="mix-rev" data-track="${tr.id}" min="0" max="100" value="${tr.rev}" /></label>` +
+      `<label><small>DL</small><input type="range" class="mix-dly" data-track="${tr.id}" min="0" max="100" value="${tr.dly}" /></label>` +
+      `</div>`;
+    mixerEl.appendChild(strip);
+  });
+
+  const master = document.createElement("div");
+  master.className = "strip master";
+  master.innerHTML =
+    `<div class="strip-name">Master</div>` +
+    `<div class="strip-note">out</div>` +
+    `<input type="range" class="vslider mix-master" min="0" max="100" value="${Math.round(state.masterVol * 100)}" title="Master volume" />`;
+  mixerEl.appendChild(master);
+
+  mixerEl.addEventListener("input", onMixerInput);
+  mixerEl.addEventListener("click", onMixerClick);
+}
+
+function onMixerInput(e) {
+  const t = e.target;
+  const id = t.dataset.track;
+  if (t.classList.contains("mix-master")) {
+    state.masterVol = t.value / 100;
+    volInput.value = t.value;
+    volVal.textContent = t.value;
+    if (engine) engine.master.gain.setTargetAtTime(state.masterVol, engine.ac.currentTime, 0.02);
+    saveLocal();
+    return;
+  }
+  if (!id) return;
+  const tr = [...PERC_TRACKS, ...MELODIC_TRACKS].find((x) => x.id === id);
+  if (t.classList.contains("mix-vol")) {
+    tr.vol = +t.value;
+    updateTrackGain(id);
+  } else if (t.classList.contains("mix-rev")) {
+    tr.rev = +t.value;
+    updateSendsFor(id);
+  } else if (t.classList.contains("mix-dly")) {
+    tr.dly = +t.value;
+    updateSendsFor(id);
+  }
+  saveLocal();
+}
+
+function onMixerClick(e) {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  const id = btn.dataset.track;
+  const tr = [...PERC_TRACKS, ...MELODIC_TRACKS].find((x) => x.id === id);
+  if (btn.classList.contains("mix-mute")) {
+    tr.mute = !tr.mute;
+    btn.classList.toggle("on-m", tr.mute);
+    setStatus(`${tr.name} ${tr.mute ? "muted" : "unmuted"}.`);
+  } else if (btn.classList.contains("mix-solo")) {
+    tr.solo = !tr.solo;
+    btn.classList.toggle("on-s", tr.solo);
+    setStatus(tr.solo ? `${tr.name} soloed.` : `${tr.name} solo off.`);
+  }
+  refreshRowLabels();
+  saveLocal();
+}
+
+function refreshMixer() {
+  mixerEl.querySelectorAll(".strip[data-track]").forEach((strip) => {
+    const tr = [...PERC_TRACKS, ...MELODIC_TRACKS].find((x) => x.id === strip.dataset.track);
+    if (!tr) return;
+    strip.querySelector(".mix-vol").value = tr.vol;
+    strip.querySelector(".mix-rev").value = tr.rev;
+    strip.querySelector(".mix-dly").value = tr.dly;
+    strip.querySelector(".mix-mute").classList.toggle("on-m", tr.mute);
+    strip.querySelector(".mix-solo").classList.toggle("on-s", tr.solo);
+  });
+  const master = mixerEl.querySelector(".mix-master");
+  if (master) master.value = Math.round(state.masterVol * 100);
+}
+
+// ============================================================
 // INIT
 // ============================================================
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
@@ -1842,6 +1971,45 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
 // global error toast
 window.addEventListener("error", (e) => toast(`Error: ${e.message}`));
 window.addEventListener("unhandledrejection", (e) => toast(`Error: ${e.reason}`));
+
+// unlock audio on first gesture (iOS requirement)
+document.addEventListener("pointerdown", () => ensureAudio(), { once: true });
+
+// ---------- view tabs (mobile navigation) ----------
+$("tabs").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-view]");
+  if (!btn) return;
+  document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("active", b === btn));
+  document.querySelectorAll(".view").forEach((v) =>
+    v.classList.toggle("active", v.id === "view" + btn.dataset.view[0].toUpperCase() + btn.dataset.view.slice(1))
+  );
+});
+
+// ---------- mobile transport bar ----------
+$("mPlay").addEventListener("click", () => (state.playing ? stop() : start()));
+$("mBpmDown").addEventListener("click", () => setBpm(state.bpm - 1));
+$("mBpmUp").addEventListener("click", () => setBpm(state.bpm + 1));
+
+function setBpm(v) {
+  state.bpm = Math.max(60, Math.min(200, Math.round(v)));
+  bpmInput.value = Math.round(state.bpm);
+  bpmVal.textContent = Math.round(state.bpm);
+  if (engine) engine.setDelayTime(engine.ac.currentTime);
+  saveLocal();
+}
+
+function updateMobileBar() {
+  $("mBpmVal").textContent = Math.round(state.bpm);
+  const slot = state.mode === "song" && state.song[0] ? state.song[0].slot : state.activeSlot;
+  $("mSlot").textContent = state.playing && state.mode === "song" ? "▶" + slot : slot;
+}
+
+function syncMobilePlayBtn() {
+  const label = state.playing ? "❚❚" : "▶";
+  $("mPlay").textContent = label;
+  $("mPlay").classList.toggle("on", state.playing);
+  updateMobileBar();
+}
 
 let toastTimer = null;
 function toast(msg) {
@@ -1859,6 +2027,7 @@ function toast(msg) {
 
 buildGrid();
 buildSlotsBar();
+buildMixer();
 buildChain();
 syncControls();
 

@@ -7,6 +7,10 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%23ff5c39'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%230d0f14'/%3E%3C/svg%3E" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#0d0f14" />
+  <meta property="og:title" content="THUMP — browser drum machine" />
+  <meta property="og:description" content="Synthesized drum machine & step sequencer. Build beats, share them, jam live. Zero samples, 100% Web Audio." />
+  <meta property="og:image" content="icon-512.png" />
+  <meta name="twitter:card" content="summary" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -24,84 +28,135 @@
         <button id="fillBtn" class="btn" aria-label="Fill">Fill</button>
         <button id="undoBtn" class="btn" aria-label="Undo">↶</button>
         <button id="redoBtn" class="btn" aria-label="Redo">↷</button>
+        <button id="helpBtn" class="btn" aria-label="Help">?</button>
       </div>
     </header>
 
-    <section class="controls">
-      <label class="ctl">
-        <span>Tempo <b id="bpmVal">124</b></span>
-        <input id="bpm" type="range" min="60" max="200" value="124" />
-      </label>
-      <label class="ctl">
-        <span>Swing <b id="swingVal">12%</b></span>
-        <input id="swing" type="range" min="0" max="60" value="12" />
-      </label>
-      <label class="ctl">
-        <span>Human <b id="humVal">0</b></span>
-        <input id="hum" type="range" min="0" max="100" value="0" />
-      </label>
-      <label class="ctl">
-        <span>Key</span>
-        <select id="keySel"></select>
-      </label>
-      <label class="ctl">
-        <span>Scale</span>
-        <select id="scaleSel"></select>
-      </label>
-      <label class="ctl">
-        <span>Master <b id="volVal">80</b></span>
-        <input id="vol" type="range" min="0" max="100" value="80" />
-      </label>
-      <div class="presets" id="presets">
-        <button data-preset="house" class="btn chip active">House</button>
-        <button data-preset="breaks" class="btn chip">Breaks</button>
-        <button data-preset="techno" class="btn chip">Techno</button>
-        <button data-preset="hiphop" class="btn chip">Hip-Hop</button>
-      </div>
+    <nav class="tabs" id="tabs">
+      <button data-view="grid" class="active">Grid</button>
+      <button data-view="song">Song</button>
+      <button data-view="mix">Mix</button>
+      <button data-view="share">Share</button>
+    </nav>
+
+    <section class="view view-grid active" id="viewGrid">
+      <section class="controls">
+        <label class="ctl">
+          <span>Tempo <b id="bpmVal">124</b></span>
+          <input id="bpm" type="range" min="60" max="200" value="124" />
+        </label>
+        <label class="ctl">
+          <span>Swing <b id="swingVal">12%</b></span>
+          <input id="swing" type="range" min="0" max="60" value="12" />
+        </label>
+        <label class="ctl">
+          <span>Human <b id="humVal">0</b></span>
+          <input id="hum" type="range" min="0" max="100" value="0" />
+        </label>
+        <label class="ctl">
+          <span>Master <b id="volVal">80</b></span>
+          <input id="vol" type="range" min="0" max="100" value="80" />
+        </label>
+        <label class="ctl">
+          <span>Key</span>
+          <select id="keySel"></select>
+        </label>
+        <label class="ctl">
+          <span>Scale</span>
+          <select id="scaleSel"></select>
+        </label>
+        <label class="ctl">
+          <span>Steps <b id="stepsVal">16</b></span>
+          <input id="stepsInput" type="number" min="4" max="64" step="1" value="16" />
+        </label>
+        <label class="ctl ctl-check">
+          <span>Click</span>
+          <input id="metroChk" type="checkbox" />
+        </label>
+        <button id="tapBtn" class="btn">Tap</button>
+        <div class="presets" id="presets">
+          <button data-preset="house" class="btn chip active">House</button>
+          <button data-preset="breaks" class="btn chip">Breaks</button>
+          <button data-preset="techno" class="btn chip">Techno</button>
+          <button data-preset="hiphop" class="btn chip">Hip-Hop</button>
+          <button data-preset="trap" class="btn chip">Trap</button>
+          <button data-preset="dnb" class="btn chip">DnB</button>
+          <button data-preset="disco" class="btn chip">Disco</button>
+          <button data-preset="latin" class="btn chip">Latin</button>
+        </div>
+      </section>
+
+      <section class="slots-bar">
+        <div class="slot-btns" id="slotBtns"></div>
+        <div class="mode-toggle" id="modeToggle">
+          <button data-mode="pattern" class="btn chip active">Pattern</button>
+          <button data-mode="song" class="btn chip">Song</button>
+        </div>
+      </section>
+
+      <section class="grid-wrap">
+        <div id="grid" class="grid"></div>
+      </section>
     </section>
 
-    <section class="slots-bar">
-      <div class="slot-btns" id="slotBtns"></div>
-      <label class="ctl">
-        <span>Steps <b id="stepsVal">16</b></span>
-        <input id="stepsInput" type="number" min="4" max="64" step="1" value="16" />
-      </label>
-      <div class="mode-toggle" id="modeToggle">
-        <button data-mode="pattern" class="btn chip active">Pattern</button>
-        <button data-mode="song" class="btn chip">Song</button>
+    <section class="view view-song" id="viewSong">
+      <div class="song-head">
+        <h2>Song</h2>
+        <button id="chainAdd" class="btn" title="Append current slot to song">+ Add <b id="chainSlotLbl">A</b></button>
+        <button id="chainClear" class="btn">Reset</button>
+        <span class="hint">drag to reorder · edge to repeat · click for automation · shift+click to play from</span>
       </div>
-      <div class="song-editor">
-        <div id="chain" class="chain"></div>
-        <button id="chainAdd" class="btn chip" title="Append current slot to song">+ Chain</button>
-        <button id="chainClear" class="btn chip">Reset</button>
-      </div>
+      <div id="chain" class="chain timeline"></div>
     </section>
 
-    <section class="grid-wrap">
-      <div id="grid" class="grid"></div>
+    <section class="view view-mix" id="viewMix">
+      <div class="song-head">
+        <h2>Mixer</h2>
+        <span class="hint">volume · mute · solo · FX sends per track</span>
+      </div>
+      <div id="mixer" class="mixer"></div>
     </section>
 
-    <section class="io-bar">
-      <input id="shareTitle" placeholder="title" maxlength="64" />
-      <input id="shareAuthor" placeholder="your name" maxlength="24" />
-      <button id="shareBtn" class="btn">Share</button>
-      <button id="galleryBtn" class="btn">Gallery</button>
-      <button id="exportWavBtn" class="btn">Export WAV</button>
-      <button id="saveProjBtn" class="btn" title="Download project as .json">Save</button>
-      <button id="loadProjBtn" class="btn" title="Load project from .json">Load</button>
-      <input type="file" id="projFile" accept=".json,application/json" hidden />
-      <span class="spacer"></span>
-      <span class="jam-box">
-        <span class="jam-dot" id="jamDot"></span>
-        <input id="roomName" placeholder="room" value="lobby" maxlength="24" />
-        <button id="joinBtn" class="btn">Join</button>
-      </span>
+    <section class="view view-share" id="viewShare">
+      <div class="song-head">
+        <h2>Share &amp; Jam</h2>
+      </div>
+      <section class="io-bar">
+        <input id="shareTitle" placeholder="title" maxlength="64" />
+        <input id="shareAuthor" placeholder="your name" maxlength="24" />
+        <button id="shareBtn" class="btn">Share</button>
+        <button id="galleryBtn" class="btn">Gallery</button>
+        <button id="exportWavBtn" class="btn">Export WAV</button>
+        <button id="exportMidiBtn" class="btn">Export MIDI</button>
+        <button id="importMidiBtn" class="btn">Import MIDI</button>
+        <input type="file" id="midiFile" accept=".mid,.midi,audio/midi" hidden />
+        <button id="saveProjBtn" class="btn" title="Download project as .json">Save</button>
+        <button id="loadProjBtn" class="btn" title="Load project from .json">Load</button>
+        <input type="file" id="projFile" accept=".json,application/json" hidden />
+      </section>
+      <section class="io-bar">
+        <span class="jam-box">
+          <span class="jam-dot" id="jamDot"></span>
+          <input id="roomName" placeholder="room" value="lobby" maxlength="24" />
+          <button id="joinBtn" class="btn">Join</button>
+        </span>
+      </section>
     </section>
 
     <footer class="bottom">
       <span id="status">Press play — audio is synthesized live via Web Audio API.</span>
-      <span><kbd>space</kbd> play · <kbd>drag</kbd> paint · <kbd>shift+click</kbd> accent · <kbd>wheel</kbd> bass pitch · <kbd>r-click copy btn</kbd> paste row · <kbd>ctrl+z/y</kbd> undo/redo</span>
+      <span><kbd>space</kbd> play · <kbd>drag</kbd> paint · <kbd>shift+click</kbd> accent · <kbd>wheel</kbd> pitch · <kbd>ctrl+z/y</kbd> undo/redo</span>
     </footer>
+
+    <div class="mobile-bar" id="mobileBar">
+      <button id="mPlay" class="btn play">▶</button>
+      <div class="m-bpm">
+        <button id="mBpmDown">−</button>
+        <b id="mBpmVal">124</b>
+        <button id="mBpmUp">+</button>
+      </div>
+      <span class="m-slot" id="mSlot">A</span>
+    </div>
   </main>
 
   <div id="autoPop" class="popover hidden">
@@ -119,6 +174,9 @@
       <span><input id="autoBpmOn" type="checkbox" /> Tempo override <b id="autoBpmVal"></b></span>
       <input id="autoBpm" type="range" min="60" max="200" value="124" disabled />
     </label>
+    <div class="fill-actions">
+      <button id="autoPlayFrom" class="btn">▶ Play from here</button>
+    </div>
   </div>
 
   <div id="fillPop" class="popover hidden">
@@ -132,6 +190,32 @@
     <div class="fill-tracks" id="fillTracks"></div>
     <div class="fill-actions">
       <button id="fillApply" class="btn play">Generate</button>
+    </div>
+  </div>
+
+  <div id="helpPop" class="popover hidden">
+    <h3>Help</h3>
+    <div class="help-cols">
+      <div>
+        <b>Grid</b>
+        <p>click / drag — paint steps</p>
+        <p>shift+click — accent</p>
+        <p>wheel on bass/lead — pitch</p>
+        <p>M — mute · ⧉ — copy row (r-click paste)</p>
+      </div>
+      <div>
+        <b>Keys</b>
+        <p>space — play/stop</p>
+        <p>ctrl+z / ctrl+y — undo/redo</p>
+        <p>Tap — set tempo by tapping</p>
+      </div>
+      <div>
+        <b>Song</b>
+        <p>drag block — reorder</p>
+        <p>drag edge — repeats</p>
+        <p>click — automation</p>
+        <p>shift+click — play from there</p>
+      </div>
     </div>
   </div>
 
