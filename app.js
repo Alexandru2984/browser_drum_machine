@@ -1674,6 +1674,123 @@ async function exportWav() {
 
 document.getElementById("exportWavBtn").addEventListener("click", exportWav);
 
+// ---------- MIDI export / import ----------
+const DRUM_MAP = { kick: 36, snare: 38, clap: 39, hatC: 42, hatO: 46, tom: 45, rim: 37, cowbell: 56 };
+
+function exportMidi() {
+  const tpBeat = 96;
+  const tpStep = tpBeat / 4;
+  const notes = [];
+  let bars;
+
+  if (state.mode === "song") {
+    bars = state.song.flatMap((e) => Array(e.reps).fill(e.slot));
+  } else {
+    bars = new Array(2).fill(state.activeSlot);
+  }
+
+  bars.forEach((slot, bar) => {
+    const pat = state.patterns[slot];
+    const barTick = bar * state.steps * tpStep;
+    for (let s = 0; s < state.steps; s++) {
+      const tick = barTick + s * tpStep;
+      for (const tr of PERC_TRACKS) {
+        const v = pat[tr.id][s];
+        if (v) notes.push({ tick, midi: DRUM_MAP[tr.id], vel: v === 2 ? 1 : 0.72, dur: tpStep / 2 });
+      }
+      const b = pat.bass[s];
+      if (b.on) {
+        let len = 1;
+        for (let k = 1; k < state.steps; k++) {
+          if (pat.bass[(s + k) % state.steps].on) { len = k; break; }
+        }
+        notes.push({ tick, midi: BASS_ROOT_MIDI + b.semi, vel: 0.9, dur: len * tpStep - 2 });
+      }
+      const ld = pat.lead[s];
+      if (ld.on) {
+        let len = 1;
+        for (let k = 1; k < state.steps; k++) {
+          if (pat.lead[(s + k) % state.steps].on) { len = k; break; }
+        }
+        notes.push({ tick, midi: leadMidi(ld.deg), vel: 0.85, dur: len * tpStep - 2 });
+      }
+      const ch = pat.chords[s];
+      if (ch.on) {
+        let len = 1;
+        for (let k = 1; k < state.steps; k++) {
+          if (pat.chords[(s + k) % state.steps].on) { len = k; break; }
+        }
+        chordMidis(ch.deg).forEach((m) => notes.push({ tick, midi: m, vel: 0.7, dur: len * tpStep - 2 }));
+      }
+    }
+  });
+
+  const ab = CORE.buildMidiFile({ bpm: Math.round(state.bpm), notes });
+  const blob = new Blob([ab], { type: "audio/midi" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `thump-${Date.now()}.mid`;
+  a.click();
+  URL.revokeObjectURL(url);
+  setStatus("MIDI exported.");
+}
+
+document.getElementById("exportMidiBtn").addEventListener("click", exportMidi);
+
+const midiFile = document.getElementById("midiFile");
+document.getElementById("importMidiBtn").addEventListener("click", () => midiFile.click());
+midiFile.addEventListener("change", () => {
+  const file = midiFile.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const parsed = CORE.parseMidiFile(reader.result);
+      pushHistory();
+      const pat = emptyPattern();
+      const tpStep = parsed.division / 4;
+      const revDrum = Object.fromEntries(Object.entries(DRUM_MAP).map(([id, m]) => [m, id]));
+
+      if (parsed.bpm >= 60 && parsed.bpm <= 200) {
+        state.bpm = Math.round(parsed.bpm);
+      }
+
+      for (const n of parsed.notes) {
+        const step = Math.round(n.tick / tpStep) % state.steps;
+        const drumId = revDrum[n.midi];
+        if (drumId) {
+          pat[drumId][step] = n.vel > 0.85 ? 2 : 1;
+        } else if (n.channel !== 9) {
+          // melodic → bass if low, lead if high
+          if (n.midi <= 52) {
+            const semi = ((n.midi - BASS_ROOT_MIDI) % 12 + 12) % 12;
+            pat.bass[step] = { on: true, semi };
+          } else {
+            for (let deg = -7; deg <= 14; deg++) {
+              if (leadMidi(deg) === n.midi) {
+                pat.lead[step] = { on: true, deg };
+                break;
+              }
+            }
+          }
+        }
+      }
+      state.patterns[state.activeSlot] = pat;
+      buildGrid();
+      refreshCells();
+      refreshSlotsUI();
+      syncControls();
+      saveLocal();
+      setStatus(`MIDI "${file.name}" imported into slot ${state.activeSlot} (${parsed.notes.length} notes).`);
+    } catch (err) {
+      setStatus(`MIDI import failed: ${err.message}`);
+    }
+    midiFile.value = "";
+  };
+  reader.readAsArrayBuffer(file);
+});
+
 // ---------- project save/load (JSON file) ----------
 document.getElementById("saveProjBtn").addEventListener("click", () => {
   const data = {

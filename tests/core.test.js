@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const CORE = require("../core.js");
 
-const { noteName, scaleMidi, leadMidi, chordMidis, normalizeSong, sanitizeAuto, getAuto, hasAuto, emptyPattern, resizePattern, audioBufferToWav, MIN_STEPS, MAX_STEPS } = CORE;
+const { noteName, scaleMidi, leadMidi, chordMidis, normalizeSong, sanitizeAuto, getAuto, hasAuto, emptyPattern, resizePattern, audioBufferToWav, buildMidiFile, parseMidiFile, MIN_STEPS, MAX_STEPS } = CORE;
 
 // ---------- noteName ----------
 test("noteName renders naturals and octaves", () => {
@@ -185,4 +185,51 @@ test("audioBufferToWav clamps and quantizes samples", () => {
   assert.equal(view.getInt16(44, true), 32767, "clamped to max");
   assert.equal(view.getInt16(46, true), -32768, "clamped to min");
   assert.equal(view.getInt16(48, true), 16383, "0.5 quantized (truncated)");
+});
+
+// ---------- MIDI ----------
+test("buildMidiFile emits valid header", () => {
+  const ab = buildMidiFile({ bpm: 120, notes: [] });
+  const view = new DataView(ab);
+  const magic = (o, n) => String.fromCharCode(...new Uint8Array(ab, o, n));
+  assert.equal(magic(0, 4), "MThd");
+  assert.equal(view.getUint16(8, false), 0, "format 0");
+  assert.equal(view.getUint16(10, false), 1, "one track");
+  assert.equal(magic(14, 4), "MTrk");
+});
+
+test("MIDI round-trip preserves notes and tempo", () => {
+  const notes = [
+    { tick: 0, midi: 36, vel: 1.0, dur: 10 },
+    { tick: 96, midi: 38, vel: 0.8, dur: 5 },
+    { tick: 200, midi: 60, vel: 0.5, dur: 48 },
+  ];
+  const parsed = parseMidiFile(buildMidiFile({ bpm: 132, notes }));
+  assert.equal(parsed.bpm, 132);
+  assert.equal(parsed.notes.length, notes.length);
+  assert.deepEqual(parsed.notes.map((n) => [n.tick, n.midi]), notes.map((n) => [n.midi ? n.tick : 0, n.midi]));
+  assert.equal(parsed.notes[0].vel, 1.0);
+  assert.equal(parsed.notes[1].dur, 5);
+  assert.equal(parsed.notes[2].dur, 48);
+});
+
+test("MIDI handles large deltas (VLQ multi-byte)", () => {
+  const notes = [{ tick: 5000, midi: 42, vel: 0.9, dur: 10 }];
+  const parsed = parseMidiFile(buildMidiFile({ bpm: 120, notes }));
+  assert.equal(parsed.notes.length, 1);
+  assert.equal(parsed.notes[0].tick, 5000);
+});
+
+test("MIDI parser rejects non-MIDI data", () => {
+  assert.throws(() => parseMidiFile(new TextEncoder().encode("hello world").buffer));
+});
+
+test("MIDI note-off before note-on at same tick avoids stuck notes", () => {
+  const notes = [
+    { tick: 0, midi: 36, vel: 1.0, dur: 96 },
+    { tick: 96, midi: 36, vel: 1.0, dur: 96 },
+  ];
+  const parsed = parseMidiFile(buildMidiFile({ bpm: 120, notes }));
+  assert.equal(parsed.notes.length, 2);
+  assert.equal(parsed.notes[1].tick, 96);
 });
