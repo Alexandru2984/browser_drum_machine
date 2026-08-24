@@ -774,7 +774,7 @@ const noteName = CORE.noteName;
 
 function buildGrid() {
   grid.innerHTML = "";
-  grid.style.gridTemplateColumns = `230px repeat(${state.steps}, minmax(26px, 1fr))`;
+  grid.style.gridTemplateColumns = `var(--label-w) repeat(${state.steps}, minmax(26px, 1fr))`;
   const rows = [
     ...PERC_TRACKS.map((t) => ({ ...t, kind: "perc" })),
     { ...BASS_TRACK, kind: "bass" },
@@ -795,8 +795,7 @@ function buildGrid() {
       `</div>` +
       `<div class="fx-line"><small>RV</small>` +
       `<input type="range" class="row-fx" data-track="${tr.id}" data-fx="rev" min="0" max="100" value="${tr.rev}" title="Reverb send" />` +
-      `</div>` +
-      `<div class="fx-line"><small>DL</small>` +
+      `<small>DL</small>` +
       `<input type="range" class="row-fx" data-track="${tr.id}" data-fx="dly" min="0" max="100" value="${tr.dly}" title="Delay send" />` +
       `</div>`;
     grid.appendChild(label);

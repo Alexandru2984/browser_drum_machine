@@ -1,5 +1,5 @@
 // THUMP service worker — cache-first for static shell, never cache API/WS.
-const CACHE = "thump-v1";
+const CACHE = "thump-v2";
 const ASSETS = ["", "index.html", "style.css", "core.js", "app.js", "manifest.json", "icon-192.png", "icon-512.png"].map(
   (p) => "/" + p
 );
