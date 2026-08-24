@@ -166,6 +166,23 @@ function resizePattern(p, steps) {
   CORE.resizePattern(p, steps);
 }
 
+// help overlay
+$("helpBtn").addEventListener("click", () => $("helpPop").classList.toggle("hidden"));
+document.addEventListener("pointerdown", (e) => {
+  const pop = $("helpPop");
+  if (!pop.classList.contains("hidden") && !pop.contains(e.target) && e.target.id !== "helpBtn") {
+    pop.classList.add("hidden");
+  }
+});
+
+// first-visit hint
+if (!localStorage.getItem("thump-seen")) {
+  localStorage.setItem("thump-seen", "1");
+  setTimeout(() => {
+    setStatus("Welcome! Tap grid cells to build a beat, then press play. Click ? for help.");
+  }, 600);
+}
+
 // exposed for tests/debugging
 window.__THUMP_STATE = state;
 

@@ -50,6 +50,7 @@ A fully client-side drum machine & step sequencer with a Rust backend for sharin
 - **Mixer view** — faders, mute, **solo** and FX sends per track
 - **Tap tempo**, **metronome**, play the song from any timeline block
 - 8 presets: House, Breaks, Techno, Hip-Hop, Trap, DnB, Disco, Latin
+- **Help overlay** (`?` button) with all shortcuts and gestures
 - Global error toast instead of silent failures
 - CI: syntax checks, 30 unit tests, jsdom UI smoke test, `cargo fmt/clippy/test`
 
