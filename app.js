@@ -142,6 +142,7 @@ const state = {
   bpm: 124,
   swing: 12,
   humanize: 0,
+  metronome: false,
   key: 9, // A
   scale: "minor",
   masterVol: 0.8,
@@ -623,7 +624,20 @@ function createEngine(ac) {
     }
   }
 
-  return { ac, master, gains, trigger, bass, lead, chords, setDelayTime, updateSends, setMacro };
+  // metronome click (straight to master, ignores FX)
+  function click(t, accent) {
+    const o = ac.createOscillator();
+    o.type = "square";
+    o.frequency.value = accent ? 1600 : 1050;
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.18, t + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+    o.connect(g).connect(master);
+    o.start(t); o.stop(t + 0.07);
+  }
+
+  return { ac, master, gains, trigger, bass, lead, chords, click, setDelayTime, updateSends, setMacro };
 }
 
 let engine = null;
@@ -720,6 +734,10 @@ function scheduleStep(slot, step, time) {
   }
 
   updatePlayhead(step, time);
+
+  if (state.metronome && step % 4 === 0) {
+    engine.click(time, step === 0);
+  }
 }
 
 function scheduleVisual(slot, trackId, step, time) {
@@ -792,11 +810,11 @@ function scheduler() {
   }
 }
 
-function start() {
+function start(fromEntry = 0) {
   ensureAudio();
   state.playing = true;
   schedStep = 0;
-  schedEntry = 0;
+  schedEntry = fromEntry;
   schedRep = 0;
   nextNoteTime = engine.ac.currentTime + 0.06;
   timerId = setInterval(scheduler, LOOKAHEAD_MS);
@@ -1138,7 +1156,7 @@ function attachTimelineEvents(block, i) {
     if (rect.right - e.clientX < 12) {
       drag = { mode: "resize", startX: e.clientX, startReps: block._entry.reps, moved: false };
     } else {
-      drag = { mode: "move", startX: e.clientX, idx: i, moved: false };
+      drag = { mode: "move", startX: e.clientX, idx: i, moved: false, shift: e.shiftKey };
       block.classList.add("dragging");
     }
     block.setPointerCapture(e.pointerId);
@@ -1193,7 +1211,7 @@ function attachTimelineEvents(block, i) {
       jamBroadcast();
     } else if (!drag.moved) {
       block._skipClick = true;
-      openAutoEditor(i);
+      drag.shift ? playFrom(i) : openAutoEditor(i);
     }
     buildChain();
     drag = null;
@@ -1221,12 +1239,23 @@ function e_pointerIdSafe() { return 0; }
 let autoSelIdx = -1;
 const autoPop = $("autoPop");
 
+function playFrom(i) {
+  if (state.mode !== "song") {
+    state.mode = "song";
+    document.querySelectorAll("#modeToggle .chip").forEach((b) =>
+      b.classList.toggle("active", b.dataset.mode === "song")
+    );
+  }
+  if (state.playing) stop();
+  start(i);
+  setStatus(`Playing song from entry ${i + 1}.`);
+}
+
 function openAutoEditor(i) {
   autoSelIdx = i;
   const entry = state.song[i];
   const a = getAuto(entry);
-  $("autoSlotLbl").textContent = `${entry.slot}·${entry.reps}`;
-  $("autoCut").value = Math.round(a.cutoff * 100);
+  $("autoSlotLbl").textContent = `${entry.slot}·${entry.reps}`;  $("autoCut").value = Math.round(a.cutoff * 100);
   $("autoCutVal").textContent = Math.round(a.cutoff * 100) + "%";
   $("autoRev").value = Math.round(a.rev * 100);
   $("autoRevVal").textContent = Math.round(a.rev * 100) + "%";
@@ -1271,6 +1300,9 @@ $("autoBpmOn").addEventListener("change", (e) => {
 $("autoBpm").addEventListener("input", (e) => {
   $("autoBpmVal").textContent = e.target.value + " BPM";
   autoSave({ bpm: +e.target.value });
+});
+$("autoPlayFrom").addEventListener("click", () => {
+  if (autoSelIdx >= 0) playFrom(autoSelIdx);
 });
 document.addEventListener("pointerdown", (e) => {
   if (autoPop.classList.contains("hidden")) return;
@@ -1997,6 +2029,30 @@ function setBpm(v) {
   if (engine) engine.setDelayTime(engine.ac.currentTime);
   saveLocal();
 }
+
+// tap tempo
+const tapTimes = [];
+$("tapBtn").addEventListener("click", () => {
+  const now = performance.now();
+  if (tapTimes.length && now - tapTimes[tapTimes.length - 1] > 2000) tapTimes.length = 0;
+  tapTimes.push(now);
+  if (tapTimes.length > 5) tapTimes.shift();
+  if (tapTimes.length >= 2) {
+    const intervals = tapTimes.slice(1).map((t, i) => t - tapTimes[i]);
+    const avg = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+    setBpm(Math.round(60000 / avg));
+    setStatus(`Tempo tapped: ${Math.round(state.bpm)} BPM (${tapTimes.length} taps).`);
+  } else {
+    setStatus("Keep tapping…");
+  }
+});
+
+// metronome
+$("metroChk").addEventListener("change", (e) => {
+  state.metronome = e.target.checked;
+  saveLocal();
+  setStatus(state.metronome ? "Metronome on." : "Metronome off.");
+});
 
 function updateMobileBar() {
   $("mBpmVal").textContent = Math.round(state.bpm);
