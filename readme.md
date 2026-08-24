@@ -44,11 +44,20 @@ A fully client-side drum machine & step sequencer with a Rust backend for sharin
 - **Export WAV** — offline render of the current pattern (2 loops) or the full arrangement
 - **Export / Import MIDI** — standard `.mid` files (GM drum mapping, melodic tracks on channel 1)
 
+### Play & perform
+- **Live drum keys** — Z X C V / A S D F / G H J trigger drums, shift = accent
+- **Recording** — hit ● while playing and your live hits land quantized on the grid
+- **Spectrum visualizer** in the header while playing
+- **Arpeggiator** on the chords track (up / down / up-down)
+- **Chord progression generator** — pop, emotional, andalusian, cycle progressions in the current key/scale
+- **Share link without server** — pattern encoded directly in the URL (Copy link)
+
 ### Product
 - **PWA** — installable on desktop/mobile, works offline (audio is 100% local)
 - **Mobile-first responsive** — tab navigation (Grid / Song / Mix / Share), sticky transport bar, auto-scrolling playhead
 - **Mixer view** — faders, mute, **solo** and FX sends per track
 - **Tap tempo**, **metronome**, play the song from any timeline block
+- 11 drum tracks incl. ride, crash, shaker — all synthesized
 - 8 presets: House, Breaks, Techno, Hip-Hop, Trap, DnB, Disco, Latin
 - **Help overlay** (`?` button) with all shortcuts and gestures
 - Global error toast instead of silent failures

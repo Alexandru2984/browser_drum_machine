@@ -23,6 +23,8 @@
       </div>
       <div class="transport">
         <button id="playBtn" class="btn play" aria-label="Play">▶</button>
+        <button id="recBtn" class="btn" aria-label="Record" title="Record live hits into current slot">●</button>
+        <canvas id="viz" class="viz" height="40"></canvas>
         <button id="clearBtn" class="btn" aria-label="Clear">Clear</button>
         <button id="randomBtn" class="btn" aria-label="Random">Dice</button>
         <button id="fillBtn" class="btn" aria-label="Fill">Fill</button>
@@ -74,6 +76,13 @@
           <input id="metroChk" type="checkbox" />
         </label>
         <button id="tapBtn" class="btn">Tap</button>
+        <button id="arpBtn" class="btn chip" title="Arpeggiate chords">Arp</button>
+        <select id="arpMode" class="ctl-select">
+          <option value="up">↑</option>
+          <option value="down">↓</option>
+          <option value="updown">↕</option>
+        </select>
+        <button id="progBtn" class="btn" title="Generate chord progression on Chords track">Prog</button>
         <div class="presets" id="presets">
           <button data-preset="house" class="btn chip active">House</button>
           <button data-preset="breaks" class="btn chip">Breaks</button>
@@ -125,6 +134,7 @@
         <input id="shareTitle" placeholder="title" maxlength="64" />
         <input id="shareAuthor" placeholder="your name" maxlength="24" />
         <button id="shareBtn" class="btn">Share</button>
+        <button id="copyLinkBtn" class="btn" title="Copy link with the pattern encoded in the URL">Copy link</button>
         <button id="galleryBtn" class="btn">Gallery</button>
         <button id="exportWavBtn" class="btn">Export WAV</button>
         <button id="exportMidiBtn" class="btn">Export MIDI</button>

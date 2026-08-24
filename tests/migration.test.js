@@ -48,7 +48,7 @@ function bootAppWithStorage(storage) {
 
   window.eval(fs.readFileSync(path.join(ROOT, "core.js"), "utf8"));
   window.eval(fs.readFileSync(path.join(ROOT, "app.js"), "utf8"));
-  return { window, errors };
+  return { window, dom, errors };
 }
 
 test("old saved data without lead/chords and with 53 steps loads cleanly", () => {
@@ -70,8 +70,9 @@ test("old saved data without lead/chords and with 53 steps loads cleanly", () =>
     // slots B, C, D entirely missing (old bug crashed here)
   };
 
-  const { window, errors } = bootAppWithStorage(storage);
-  assert.deepEqual(errors, [], `console errors: ${errors.join("; ")}`);
+  const { window, dom, errors } = bootAppWithStorage(storage);
+  try {
+    assert.deepEqual(errors, [], `console errors: ${errors.join("; ")}`);
 
   // every slot must be resized to 53 steps
   const st = window.__THUMP_STATE;
@@ -80,17 +81,28 @@ test("old saved data without lead/chords and with 53 steps loads cleanly", () =>
       assert.equal(st.patterns[slot][row].length, 53, `${slot}.${row}`);
     }
   }
-  // grid rendered 53 columns of 11 rows without crashing
-  assert.equal(window.document.querySelectorAll('.cell[data-step="52"]').length, 11);
+    // grid rendered 53 columns of 14 rows without crashing
+    assert.equal(window.document.querySelectorAll('.cell[data-step="52"]').length, 14);
+  } finally {
+    dom.window.close();
+  }
 });
 
 test("corrupt saved data falls back to defaults without crashing", () => {
-  const { errors } = bootAppWithStorage({ v: 2, patterns: "garbage" });
-  assert.deepEqual(errors, []);
+  const { errors, dom } = bootAppWithStorage({ v: 2, patterns: "garbage" });
+  try {
+    assert.deepEqual(errors, []);
+  } finally {
+    dom.window.close();
+  }
 });
 
 test("empty storage boots with defaults", () => {
-  const { window, errors } = bootAppWithStorage(null);
-  assert.deepEqual(errors, []);
-  assert.equal(window.document.querySelectorAll(".cell").length > 0, true);
+  const { window, errors, dom } = bootAppWithStorage(null);
+  try {
+    assert.deepEqual(errors, []);
+    assert.equal(window.document.querySelectorAll(".cell").length > 0, true);
+  } finally {
+    dom.window.close();
+  }
 });

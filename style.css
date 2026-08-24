@@ -178,7 +178,7 @@ select option { background: var(--panel); }
 .grid {
   display: grid;
   grid-template-columns: var(--label-w) repeat(16, minmax(var(--cell-min, 26px), 1fr));
-  grid-template-rows: repeat(11, minmax(48px, 1fr));
+  grid-template-rows: repeat(14, minmax(48px, 1fr));
   gap: 6px;
   height: 100%;
 }

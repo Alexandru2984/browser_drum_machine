@@ -40,6 +40,9 @@ const PERC_TRACKS = [
   { id: "tom",     name: "Tom",     note: "G3",  vol: 70, mute: false, solo: false, rev: 12, dly: 0 },
   { id: "rim",     name: "Rim",     note: "E4",  vol: 60, mute: false, solo: false, rev: 8,  dly: 10 },
   { id: "cowbell", name: "Cowbell", note: "C#4", vol: 50, mute: false, solo: false, rev: 5,  dly: 8 },
+  { id: "ride",    name: "Ride",    note: "G5",  vol: 42, mute: false, solo: false, rev: 18, dly: 0 },
+  { id: "crash",   name: "Crash",   note: "A4",  vol: 52, mute: false, solo: false, rev: 30, dly: 0 },
+  { id: "shaker",  name: "Shaker",  note: "D5",  vol: 48, mute: false, solo: false, rev: 8,  dly: 6 },
 ];
 
 const BASS_TRACK = { id: "bass", name: "Bass", note: "A1", vol: 78, mute: false, solo: false, rev: 4, dly: 0 };
@@ -143,6 +146,9 @@ const state = {
   swing: 12,
   humanize: 0,
   metronome: false,
+  recording: false,
+  arp: false,
+  arpMode: "up",
   key: 9, // A
   scale: "minor",
   masterVol: 0.8,
@@ -195,6 +201,8 @@ function serialize() {
     humanize: state.humanize,
     key: state.key,
     scale: state.scale,
+    arp: state.arp,
+    arpMode: state.arpMode,
     steps: state.steps,
     mode: state.mode,
     activeSlot: state.activeSlot,
@@ -211,6 +219,8 @@ function deserialize(d) {
     state.humanize = Math.max(0, Math.min(100, +d.humanize || 0));
     state.key = ((+d.key || 0) % 12 + 12) % 12;
     state.scale = SCALES[d.scale] ? d.scale : "minor";
+    state.arp = !!d.arp;
+    state.arpMode = ["up", "down", "updown"].includes(d.arpMode) ? d.arpMode : "up";
     state.steps = Math.max(MIN_STEPS, Math.min(MAX_STEPS, +d.steps || 16));
     state.mode = d.mode === "song" ? "song" : "pattern";
     state.activeSlot = SLOTS.includes(d.activeSlot) ? d.activeSlot : "A";
@@ -338,6 +348,10 @@ function createEngine(ac) {
   comp.connect(ac.destination);
   master.connect(macroLP);
   macroLP.connect(comp);
+
+  const analyser = ac.createAnalyser();
+  analyser.fftSize = 256;
+  master.connect(analyser);
 
   // reverb send (generated impulse response)
   const revIn = ac.createGain();
@@ -554,6 +568,52 @@ function createEngine(ac) {
     });
   }
 
+  function ride(t, v) {
+    _vel = v;
+    const bp = ac.createBiquadFilter();
+    bp.type = "bandpass"; bp.frequency.value = 6500; bp.Q.value = 0.8;
+    const hp = ac.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 4500;
+    const g = ac.createGain();
+    env(g, t, 0.001, 0.4, 1.1);
+    bp.connect(hp).connect(g).connect(gains.ride);
+    [800, 1150, 1550, 2100, 2900].forEach((f) => {
+      const o = ac.createOscillator(); o.type = "square"; o.frequency.value = f;
+      o.connect(bp);
+      o.start(t); o.stop(t + 1.2);
+    });
+    const n = noise(t, 1.2);
+    const ng = ac.createGain();
+    env(ng, t, 0.001, 0.25, 1.05);
+    n.connect(hp).connect(ng).connect(gains.ride);
+  }
+
+  function crash(t, v) {
+    _vel = v;
+    const hp = ac.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 3500;
+    const g = ac.createGain();
+    env(g, t, 0.004, 0.6, 1.7);
+    hp.connect(g).connect(gains.crash);
+    const n = noise(t, 2);
+    n.connect(hp);
+    const n2 = noise(t, 2);
+    const bp = ac.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 9000; bp.Q.value = 0.5;
+    const g2 = ac.createGain();
+    env(g2, t, 0.004, 0.25, 1.4);
+    n2.connect(bp).connect(g2).connect(gains.crash);
+  }
+
+  function shaker(t, v) {
+    _vel = v;
+    const n = noise(t, 0.15);
+    const bp = ac.createBiquadFilter();
+    bp.type = "bandpass"; bp.frequency.value = 5500; bp.Q.value = 1;
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.45 * _vel, 0.001), t + 0.025);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+    n.connect(bp).connect(g).connect(gains.shaker);
+  }
+
   // 303-style acid bass
   function bass(t, midi, dur, v) {
     _vel = v;
@@ -637,6 +697,9 @@ function createEngine(ac) {
       case "tom": return tom(tt, v);
       case "rim": return rim(tt, v);
       case "cowbell": return cowbell(tt, v);
+      case "ride": return ride(tt, v);
+      case "crash": return crash(tt, v);
+      case "shaker": return shaker(tt, v);
       case "bass": break;
     }
   }
@@ -654,7 +717,7 @@ function createEngine(ac) {
     o.start(t); o.stop(t + 0.07);
   }
 
-  return { ac, master, gains, trigger, bass, lead, chords, click, setDelayTime, updateSends, setMacro };
+  return { ac, master, gains, analyser, trigger, bass, lead, chords, click, setDelayTime, updateSends, setMacro };
 }
 
 let engine = null;
@@ -746,7 +809,15 @@ function scheduleStep(slot, step, time) {
     for (let k = 1; k < state.steps; k++) {
       if (pat.chords[(step + k) % state.steps].on) { len = k * sd; break; }
     }
-    engine.chords(time + swingOffset, chordMidis(ch.deg), len, humV());
+    const midis = chordMidis(ch.deg);
+    if (state.arp) {
+      for (let k = 0; k < len; k += sd) {
+        const idx = arpIdx(Math.round(k / sd), midis.length);
+        engine.chords(time + swingOffset + k, [midis[idx]], sd * 0.9, humV());
+      }
+    } else {
+      engine.chords(time + swingOffset, chordMidis(ch.deg), len, humV());
+    }
     scheduleVisual(slot, "chords", step, time + swingOffset);
   }
 
@@ -769,6 +840,7 @@ function updatePlayhead(step, time) {
   const delay = Math.max(0, (time - engine.ac.currentTime) * 1000);
   setTimeout(() => {
     document.querySelectorAll(".cell.playhead").forEach((c) => c.classList.remove("playhead"));
+    uiStep = step;
     const cells = document.querySelectorAll(`.cell[data-step="${step}"]`);
     cells.forEach((c) => c.classList.add("playhead"));
     // keep the playhead in view (phones / narrow windows)
@@ -1423,6 +1495,83 @@ scaleSel.addEventListener("change", () => {
   refreshCells();
   saveLocal();
 });
+
+// arpeggiator
+function arpIdx(k, n) {
+  if (n <= 1) return 0;
+  if (state.arpMode === "down") return n - 1 - (k % n);
+  if (state.arpMode === "updown") {
+    const period = 2 * n - 2;
+    const m = k % period;
+    return m < n ? m : period - m;
+  }
+  return k % n;
+}
+
+$("arpBtn").addEventListener("click", () => {
+  state.arp = !state.arp;
+  $("arpBtn").classList.toggle("active", state.arp);
+  saveLocal();
+  setStatus(state.arp ? `Arpeggiator on (${state.arpMode}).` : "Arpeggiator off.");
+});
+$("arpMode").addEventListener("change", (e) => {
+  state.arpMode = e.target.value;
+  saveLocal();
+});
+
+// chord progression generator
+const PROGRESSIONS = [
+  { name: "pop", degrees: [0, 4, 5, 3] },
+  { name: "emotional", degrees: [5, 3, 0, 4] },
+  { name: "andalusian", degrees: [0, 6, 5, 4] },
+  { name: "cycle", degrees: [0, 2, 3, 4] },
+];
+let progIdx = 0;
+
+$("progBtn").addEventListener("click", () => {
+  const prog = PROGRESSIONS[progIdx % PROGRESSIONS.length];
+  progIdx++;
+  pushHistory();
+  const pat = curPattern();
+  pat.chords = pat.chords.map(() => ({ on: false, deg: 0 }));
+  const segLen = Math.max(1, Math.floor(state.steps / prog.degrees.length));
+  prog.degrees.forEach((deg, i) => {
+    if (i * segLen < state.steps) {
+      pat.chords[i * segLen] = { on: true, deg };
+    }
+  });
+  refreshCells();
+  saveLocal();
+  setStatus(`Chord progression "${prog.name}" written on Chords.`);
+  jamBroadcast();
+});
+
+// share link with encoded state (no server needed)
+function b64encode(str) {
+  const bytes = new TextEncoder().encode(str);
+  let bin = "";
+  const CH = 0x8000;
+  for (let i = 0; i < bytes.length; i += CH) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + CH));
+  }
+  return btoa(bin);
+}
+
+function b64decode(b64) {
+  const bin = atob(b64);
+  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+$("copyLinkBtn").addEventListener("click", async () => {
+  const link = `${location.origin}/?s=${encodeURIComponent(b64encode(JSON.stringify(serialize())))}`;
+  try {
+    await navigator.clipboard.writeText(link);
+    setStatus("Link with pattern copied to clipboard!");
+  } catch (_) {
+    setStatus(`Link: ${link}`);
+  }
+});
 volInput.addEventListener("input", () => {
   state.masterVol = volInput.value / 100;
   volVal.textContent = volInput.value;
@@ -1439,6 +1588,8 @@ function syncControls() {
   humVal.textContent = state.humanize;
   keySel.value = state.key;
   scaleSel.value = state.scale;
+  $("arpBtn").classList.toggle("active", state.arp);
+  $("arpMode").value = state.arpMode;
   volInput.value = Math.round(state.masterVol * 100);
   volVal.textContent = Math.round(state.masterVol * 100);
   document.querySelectorAll("#modeToggle .chip").forEach((b) =>
@@ -1590,16 +1741,84 @@ window.addEventListener("keydown", (e) => {
   if (e.code === "Space" && !e.repeat && e.target.tagName !== "INPUT") {
     e.preventDefault();
     state.playing ? stop() : start();
+    return;
   }
   if ((e.ctrlKey || e.metaKey) && e.code === "KeyZ") {
     e.preventDefault();
     e.shiftKey ? redo() : undo();
+    return;
   }
   if ((e.ctrlKey || e.metaKey) && e.code === "KeyY") {
     e.preventDefault();
     redo();
+    return;
   }
+  // live drum keys
+  if (e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+  const id = LIVE_KEYS[e.key.toLowerCase()];
+  if (!id) return;
+  ensureAudio();
+  const val = e.shiftKey ? 2 : 1;
+  engine.trigger(id, engine.ac.currentTime + 0.01, val);
+  flashCell(id, state.playing ? uiStep : 0);
+  if (state.recording && state.playing) recordHit(id, val);
 });
+
+// live drum key map
+const LIVE_KEYS = {
+  z: "kick", x: "snare", c: "clap", v: "tom",
+  a: "hatC", s: "hatO", d: "rim", f: "cowbell",
+  g: "ride", h: "crash", j: "shaker",
+};
+
+let uiStep = -1;
+
+function recordHit(id, val) {
+  const step = ((uiStep % state.steps) + state.steps) % state.steps;
+  curPattern()[id][step] = val;
+  const cell = document.querySelector(`.cell[data-track="${id}"][data-step="${step}"]`);
+  if (cell) paintCell(cell, id, step);
+  saveLocal();
+}
+
+$("recBtn").addEventListener("click", () => {
+  state.recording = !state.recording;
+  $("recBtn").classList.toggle("rec-on", state.recording);
+  if (state.recording && !state.playing) start();
+  setStatus(state.recording ? "Recording — play the keys (Z X C V / A S D F / G H J), hits land on the current step." : "Recording off.");
+});
+
+// ---------- spectrum visualizer ----------
+const vizCanvas = document.getElementById("viz");
+const vizCtx = vizCanvas.getContext("2d");
+
+function drawViz() {
+  requestAnimationFrame(drawViz);
+  const dpr = window.devicePixelRatio || 1;
+  const w = vizCanvas.clientWidth;
+  const h = vizCanvas.clientHeight;
+  if (w && vizCanvas.width !== w * dpr) {
+    vizCanvas.width = w * dpr;
+    vizCanvas.height = h * dpr;
+  }
+  vizCtx.clearRect(0, 0, vizCanvas.width, vizCanvas.height);
+  if (!engine || !engine.analyser || !state.playing) return;
+
+  const data = new Uint8Array(engine.analyser.frequencyBinCount);
+  engine.analyser.getByteFrequencyData(data);
+  const bars = 42;
+  const bw = (vizCanvas.width / bars) * 0.7;
+  const gap = (vizCanvas.width / bars) * 0.3;
+  vizCtx.fillStyle = "#ff5c39";
+  for (let i = 0; i < bars; i++) {
+    const v = data[Math.floor((i / bars) * data.length * 0.7)] / 255;
+    const bh = Math.max(2, v * vizCanvas.height);
+    vizCtx.globalAlpha = 0.35 + v * 0.65;
+    vizCtx.fillRect(i * (bw + gap), vizCanvas.height - bh, bw, bh);
+  }
+  vizCtx.globalAlpha = 1;
+}
+requestAnimationFrame(drawViz);
 
 function setStatus(msg) {
   statusEl.textContent = msg;
@@ -1692,7 +1911,7 @@ async function exportWav() {
 document.getElementById("exportWavBtn").addEventListener("click", exportWav);
 
 // ---------- MIDI export / import ----------
-const DRUM_MAP = { kick: 36, snare: 38, clap: 39, hatC: 42, hatO: 46, tom: 45, rim: 37, cowbell: 56 };
+const DRUM_MAP = { kick: 36, snare: 38, clap: 39, hatC: 42, hatO: 46, tom: 45, rim: 37, cowbell: 56, ride: 51, crash: 49, shaker: 70 };
 
 function exportMidi() {
   const tpBeat = 96;
@@ -2225,6 +2444,23 @@ syncControls();
   const params = new URLSearchParams(location.search);
   if (params.get("p")) {
     loadFromServer(params.get("p"));
+    window.history.replaceState(null, "", "/");
+    return;
+  }
+  if (params.get("s")) {
+    try {
+      pushHistory();
+      deserialize(JSON.parse(b64decode(params.get("s"))));
+      setStatus("Pattern loaded from shared link.");
+    } catch (_) {
+      setStatus("Invalid shared link data.");
+    }
+    buildGrid();
+    refreshCells();
+    refreshSlotsUI();
+    buildChain();
+    syncControls();
+    saveLocal();
     window.history.replaceState(null, "", "/");
     return;
   }

@@ -41,6 +41,7 @@ window.AudioContext = class {
   createBufferSource() { const self = { buffer: null, start(){}, stop(){}, connect(dest){ return dest; } }; return self; }
   createConvolver() { return { buffer: null, connect(dest){ return dest; } }; }
   createDelay(t) { return { delayTime: this._audioParam(), connect(dest){ return dest; } }; }
+  createAnalyser() { return { fftSize: 0, frequencyBinCount: 128, getByteFrequencyData() {}, connect(d){ return d; } }; }
   createBuffer(ch, len, sr) {
     return { getChannelData: () => new Float32Array(len), numberOfChannels: ch, length: len, sampleRate: sr };
   }
@@ -54,6 +55,15 @@ window.AudioContext = class {
 };
 window.OfflineAudioContext = window.AudioContext;
 window.URL.createObjectURL = () => "blob:x";
+window.TextEncoder = TextEncoder;
+window.TextDecoder = TextDecoder;
+// jsdom has no canvas backend — stub 2d context
+window.HTMLCanvasElement.prototype.getContext = () => ({
+  clearRect() {},
+  fillRect() {},
+  set fillStyle(_) {},
+  set globalAlpha(_) {},
+});
 
 const errors = [];
 window.addEventListener("error", (e) => errors.push(e.error ? e.error.stack : e.message));
@@ -149,13 +159,24 @@ try {
   };
   setSteps(32);
   const cells32 = doc.querySelectorAll(`.cell[data-step="31"]`).length;
-  if (cells32 !== 11) errors.push(`steps input: expected 11 cells at step 31, got ${cells32}`);
+  if (cells32 !== 14) errors.push(`steps input: expected 14 cells at step 31, got ${cells32}`);
   setSteps(64);
   const cells64 = doc.querySelectorAll(`.cell[data-step="63"]`).length;
-  if (cells64 !== 11) errors.push(`steps input: expected 11 cells at step 63, got ${cells64}`);
+  if (cells64 !== 14) errors.push(`steps input: expected 14 cells at step 63, got ${cells64}`);
   setSteps(32);
   fire(doc.getElementById("randomBtn"), "click");
   setSteps(16);
+  // live drum keys + recording toggle
+  fire(doc.getElementById("recBtn"), "click");
+  fire(doc.getElementById("playBtn"), "click");
+  window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "z", bubbles: true, cancelable: true }));
+  fire(doc.getElementById("playBtn"), "click");
+  fire(doc.getElementById("recBtn"), "click");
+  // arp + progression + copy link + help
+  fire(doc.getElementById("arpBtn"), "click");
+  fire(doc.getElementById("progBtn"), "click");
+  fire(doc.getElementById("copyLinkBtn"), "click");
+  fire(doc.getElementById("helpBtn"), "click");
   fire(doc.getElementById("playBtn"), "click");
   setTimeout(() => {
     fire(doc.getElementById("playBtn"), "click"); // stop
