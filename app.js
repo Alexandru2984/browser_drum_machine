@@ -979,7 +979,21 @@ function buildGrid() {
     const cell = e.target.closest(".cell");
     if (cell) applyPaint(cell, cell.dataset.track, +cell.dataset.step);
   });
-  window.addEventListener("pointerup", () => (painting = false));
+
+  // touch drag-paint: pointerover doesn't fire while a finger is down,
+  // so resolve the cell under the finger manually
+  let lastTouchCell = null;
+  window.addEventListener("pointermove", (e) => {
+    if (!painting || (!e.clientX && !e.clientY)) return;
+    const el = document.elementFromPoint ? document.elementFromPoint(e.clientX, e.clientY) : null;
+    const cell = el && el.closest ? el.closest(".cell") : null;
+    if (!cell) return;
+    const key = cell.dataset.track + ":" + cell.dataset.step;
+    if (key === lastTouchCell) return;
+    lastTouchCell = key;
+    applyPaint(cell, cell.dataset.track, +cell.dataset.step);
+  });
+  window.addEventListener("pointerup", () => { painting = false; lastTouchCell = null; });
 
   grid.addEventListener("click", (e) => {
     const btn = e.target.closest(".mute-btn");
@@ -1013,6 +1027,35 @@ function onCellDown(e, tr, s, cell) {
   e.preventDefault();
   ensureAudio();
   pushHistory();
+
+  // long-press = touch equivalent of shift: accent (perc) / pitch up (melodic)
+  const lpX = e.clientX, lpY = e.clientY;
+  clearTimeout(onCellDown._lp);
+  onCellDown._lp = setTimeout(() => {
+    const b = tr.kind === "bass" || tr.kind === "lead" || tr.kind === "chords"
+      ? curPattern()[tr.id][s]
+      : null;
+    if (b && b.on) {
+      if (tr.kind === "bass") b.semi = Math.max(-24, Math.min(24, b.semi + 1));
+      else b.deg = Math.max(-7, Math.min(14, b.deg + 1));
+      paintCell(cell, tr.id, s);
+      previewMelodic(tr.id, s);
+      saveLocal();
+    } else if (!b && curPattern()[tr.id][s] === 1) {
+      curPattern()[tr.id][s] = 2;
+      paintCell(cell, tr.id, s);
+      if (!state.playing) engine.trigger(tr.id, engine.ac.currentTime + 0.01, 2);
+      saveLocal();
+    }
+  }, 450);
+  const cancelLp = () => clearTimeout(onCellDown._lp);
+  window.addEventListener("pointerup", cancelLp, { once: true });
+  cell.addEventListener("pointermove", function onMove(mv) {
+    if (Math.abs(mv.clientX - lpX) + Math.abs(mv.clientY - lpY) > 12) {
+      cancelLp();
+      cell.removeEventListener("pointermove", onMove);
+    }
+  });
 
   if (tr.kind === "bass" || tr.kind === "lead" || tr.kind === "chords") {
     if (e.shiftKey) return;
