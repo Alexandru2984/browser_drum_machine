@@ -127,6 +127,9 @@ function resizePattern(p, steps) {
   CORE.resizePattern(p, steps);
 }
 
+// exposed for tests/debugging
+window.__THUMP_STATE = state;
+
 // ---------- persistence ----------
 function serialize() {
   return {
@@ -157,8 +160,7 @@ function deserialize(d) {
     state.activeSlot = SLOTS.includes(d.activeSlot) ? d.activeSlot : "A";
     state.song = Array.isArray(d.song) && d.song.length ? normalizeSong(d.song) : [{ slot: state.activeSlot, reps: 1 }];
     for (const s of SLOTS) {
-      const sp = d.patterns[s];
-      if (!sp) continue;
+      const sp = d.patterns[s] || {};
       const fresh = emptyPattern();
       for (const t of PERC_TRACKS) {
         if (Array.isArray(sp[t.id])) {
@@ -185,6 +187,9 @@ function deserialize(d) {
           state.patterns[s][id] = row.slice(0, fresh[id].length);
         }
       }
+      // guarantee every slot matches the loaded step count, even slots
+      // absent from older saved data
+      resizePattern(state.patterns[s], state.steps);
     }
     return true;
   } catch (_) {
